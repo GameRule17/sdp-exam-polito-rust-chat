@@ -1,0 +1,10 @@
+C:\Users\natan\OneDrive\Documenti\Magistrale\POLITO\II SEMESTRE I ANNO\PROGRAMMAZIONE DI SISTEMA\RUST - API PROGRAMMING\G26\Client\target\debug\deps\liblock_api-5255030bbda472b2.rmeta: C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\lock_api-0.4.13\src\lib.rs C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\lock_api-0.4.13\src\mutex.rs C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\lock_api-0.4.13\src\remutex.rs C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\lock_api-0.4.13\src\rwlock.rs
+
+C:\Users\natan\OneDrive\Documenti\Magistrale\POLITO\II SEMESTRE I ANNO\PROGRAMMAZIONE DI SISTEMA\RUST - API PROGRAMMING\G26\Client\target\debug\deps\liblock_api-5255030bbda472b2.rlib: C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\lock_api-0.4.13\src\lib.rs C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\lock_api-0.4.13\src\mutex.rs C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\lock_api-0.4.13\src\remutex.rs C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\lock_api-0.4.13\src\rwlock.rs
+
+C:\Users\natan\OneDrive\Documenti\Magistrale\POLITO\II SEMESTRE I ANNO\PROGRAMMAZIONE DI SISTEMA\RUST - API PROGRAMMING\G26\Client\target\debug\deps\lock_api-5255030bbda472b2.d: C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\lock_api-0.4.13\src\lib.rs C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\lock_api-0.4.13\src\mutex.rs C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\lock_api-0.4.13\src\remutex.rs C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\lock_api-0.4.13\src\rwlock.rs
+
+C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\lock_api-0.4.13\src\lib.rs:
+C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\lock_api-0.4.13\src\mutex.rs:
+C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\lock_api-0.4.13\src\remutex.rs:
+C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\lock_api-0.4.13\src\rwlock.rs:

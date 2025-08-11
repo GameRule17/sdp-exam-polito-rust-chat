@@ -1,0 +1,1 @@
+C:\Users\natan\OneDrive\Documenti\Magistrale\POLITO\II\ SEMESTRE\ I\ ANNO\PROGRAMMAZIONE\ DI\ SISTEMA\RUST\ -\ API\ PROGRAMMING\G26\Client\target\debug\ruggine-client.exe: C:\Users\natan\OneDrive\Documenti\Magistrale\POLITO\II\ SEMESTRE\ I\ ANNO\PROGRAMMAZIONE\ DI\ SISTEMA\RUST\ -\ API\ PROGRAMMING\G26\Client\src\main.rs
