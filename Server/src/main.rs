@@ -4,6 +4,8 @@ use tokio::sync::broadcast;
 use futures::{SinkExt, StreamExt};
 use serde::{Serialize, Deserialize};
 
+mod logger;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct ChatMessage {
     from: String,
@@ -12,6 +14,14 @@ struct ChatMessage {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+
+    // Avvio del logger in background
+    tokio::spawn(async {
+        if let Err(e) = logger::start_cpu_logger("server_cpu.log").await {
+            eprintln!("Errore logger CPU: {:?}", e);
+        }
+    });
+
     let listener = TcpListener::bind("127.0.0.1:8080").await?;
     println!("Server in ascolto su 127.0.0.1:8080");
 
