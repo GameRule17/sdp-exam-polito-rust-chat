@@ -1,0 +1,26 @@
+# Ignora cartelle di build di Cargo
+Client/target/
+Server/target/
+
+# Ignora eventuali file binari o compilati
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Ignora file temporanei di backup dell'editor
+*.swp
+*.swo
+*~
+
+# Ignora configurazioni locali dell'IDE/Editor
+.vscode/
+.idea/
+
+# Ignora log
+*.log
+
+# Ignora Cargo.lock solo se non vuoi fissare le versioni delle dipendenze
+# (per applicazioni solitamente lo si tiene)
+# Client/Cargo.lock
+# Server/Cargo.lock

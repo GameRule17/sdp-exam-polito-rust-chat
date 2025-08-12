@@ -4,6 +4,8 @@ use futures::{SinkExt, StreamExt};
 use serde::{Serialize, Deserialize};
 use std::io::{self, Write};
 
+//prova merge
+
 #[derive(Serialize, Deserialize, Debug)]
 struct ChatMessage {
     from: String,
