@@ -1,7 +1,0 @@
-C:\Users\natan\OneDrive\Documenti\Magistrale\POLITO\II SEMESTRE I ANNO\PROGRAMMAZIONE DI SISTEMA\RUST - API PROGRAMMING\G26\Client\target\debug\deps\libfutures_sink-a3a93af746abfe1d.rmeta: C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\futures-sink-0.3.31\src\lib.rs
-
-C:\Users\natan\OneDrive\Documenti\Magistrale\POLITO\II SEMESTRE I ANNO\PROGRAMMAZIONE DI SISTEMA\RUST - API PROGRAMMING\G26\Client\target\debug\deps\libfutures_sink-a3a93af746abfe1d.rlib: C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\futures-sink-0.3.31\src\lib.rs
-
-C:\Users\natan\OneDrive\Documenti\Magistrale\POLITO\II SEMESTRE I ANNO\PROGRAMMAZIONE DI SISTEMA\RUST - API PROGRAMMING\G26\Client\target\debug\deps\futures_sink-a3a93af746abfe1d.d: C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\futures-sink-0.3.31\src\lib.rs
-
-C:\Users\natan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\futures-sink-0.3.31\src\lib.rs:
