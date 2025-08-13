@@ -30,6 +30,6 @@ pub async fn start_cpu_logger(log_path: &str) -> Result<()> {
             file.write_all(log_line.as_bytes())?;
         }
 
-        sleep(Duration::from_secs(2)).await;
+        sleep(Duration::from_secs(5)).await;
     }
 }
