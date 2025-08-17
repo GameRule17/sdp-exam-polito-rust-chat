@@ -1,78 +1,336 @@
-use tokio::net::{TcpListener, TcpStream};
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
-use tokio::sync::broadcast;
-use futures::{SinkExt, StreamExt};
-use serde::{Serialize, Deserialize};
+use clap::Parser;
+use ruggine_common::{ClientToServer, ServerToClient};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    net::{TcpListener, TcpStream},
+    sync::{mpsc, RwLock},
+};
+use tracing::{error, info, warn};
+use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct ChatMessage {
-    from: String,
-    body: String,
+type Tx = mpsc::UnboundedSender<ServerToClient>;
+type Rx = mpsc::UnboundedReceiver<ServerToClient>;
+
+#[derive(Default)]
+struct Group {
+    members: HashSet<Uuid>, // client_ids
+}
+
+#[derive(Default)]
+struct State {
+    
+    users_by_nick: HashMap<String, Uuid>,
+    
+    nicks_by_id: HashMap<Uuid, String>,
+    
+    groups: HashMap<String, Group>,
+    
+    invites: HashMap<String, (String, String)>,
+    
+    clients: HashMap<Uuid, Tx>,
+}
+
+#[derive(Parser, Debug)]
+#[command(name="ruggine-server")]
+struct Args {
+    /// Indirizzo di bind es. 0.0.0.0:7000
+    #[arg(long, default_value = "127.0.0.1:7000")]
+    bind: String,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:8080").await?;
-    println!("Server in ascolto su 127.0.0.1:8080");
+    tracing_subscriber::fmt().with_env_filter("info").init();
 
-    // Canale broadcast per inviare messaggi a tutti i client
-    let (tx, _rx) = broadcast::channel::<ChatMessage>(100);
+    let args = Args::parse();
+    let state = Arc::new(RwLock::new(State::default()));
+
+    let listener = TcpListener::bind(&args.bind).await?;
+    info!("Server in ascolto su {}", args.bind);
 
     loop {
-        let (stream, _) = listener.accept().await?;
-        let tx = tx.clone();
-        let rx = tx.subscribe();
-
+        let (socket, addr) = listener.accept().await?;
+        info!("Connessione da {}", addr);
+        let st = state.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_client(stream, tx, rx).await {
-                eprintln!("Connessione terminata: {}", e);
+            if let Err(e) = handle_conn(socket, st).await {
+                warn!("Connessione terminata con errore: {:?}", e);
             }
         });
     }
 }
 
-async fn handle_client(
-    stream: TcpStream,
-    tx: broadcast::Sender<ChatMessage>,
-    mut rx: broadcast::Receiver<ChatMessage>,
-) -> anyhow::Result<()> {
-    let framed = Framed::new(stream, LengthDelimitedCodec::new());
-    let (mut writer, mut reader) = framed.split();
+async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Result<()> {
+    let (reader, mut writer) = stream.into_split();
+    let mut reader = BufReader::new(reader).lines();
 
-    // 1️⃣ chiedi username
-    writer.send(serde_json::to_vec(&ChatMessage {
-        from: "SERVER".into(),
-        body: "Inserisci il tuo username:".into(),
-    })?.into()).await?;
+    // canale out verso questo client
+    let (tx, mut rx): (Tx, Rx) = mpsc::unbounded_channel();
 
-    let username_msg = reader.next().await.ok_or_else(|| anyhow::anyhow!("Connessione chiusa"))??;
-    let username: ChatMessage = serde_json::from_slice(&username_msg)?;
-    let username = username.body.clone();
-
-    println!("{} si è connesso", username);
-
-    // 2️⃣ task per ricevere dal client e fare broadcast
-    let tx_clone = tx.clone();
-    let uname_clone = username.clone();
+    // task di scrittura: prende ServerToClient dal canale e li scrive in NDJSON
     tokio::spawn(async move {
-        while let Some(Ok(bytes)) = reader.next().await {
-            if let Ok(msg) = serde_json::from_slice::<ChatMessage>(&bytes) {
-                let _ = tx_clone.send(ChatMessage {
-                    from: uname_clone.clone(),
-                    body: msg.body,
-                });
+        while let Some(msg) = rx.recv().await {
+            let line = match serde_json::to_string(&msg) {
+                Ok(s) => s,
+                Err(e) => {
+                    error!("Serialize error: {e}");
+                    continue;
+                }
+            };
+            if writer.write_all(line.as_bytes()).await.is_err() {
+                break; // client disconnesso
+            }
+            if writer.write_all(b"\n").await.is_err() {
+                break; // client disconnesso
             }
         }
     });
 
-    // 3️⃣ invio messaggi dal broadcast
-    while let Ok(msg) = rx.recv().await {
-        let json = serde_json::to_vec(&msg)?;
-        if let Err(e) = writer.send(json.into()).await {
-            eprintln!("Errore invio a {}: {}", username, e);
-            break;
+    // id di questa connessione dopo Register
+    let mut client_id: Option<Uuid> = None;
+
+    // loop di lettura NDJSON
+    while let Some(line) = reader.next_line().await? {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        // parse sicuro del JSON -> enum
+        let msg: ClientToServer = match serde_json::from_str(line) {
+            Ok(m) => m,
+            Err(e) => {
+                error!("Errore parsing messaggio: {}", e);
+                let _ = tx.send(ServerToClient::Error {
+                    reason: "Malformed JSON".into(),
+                });
+                continue;
+            }
+        };
+
+        match msg {
+            ClientToServer::Register { nick, client_id: req_id } => {
+                let mut st = state.write().await;
+
+                
+                let id = st
+                    .users_by_nick
+                    .entry(nick.clone())
+                    .or_insert(req_id)
+                    .to_owned();
+
+                st.nicks_by_id.insert(id, nick.clone());
+                st.clients.insert(id, tx.clone());
+                client_id = Some(id);
+
+                if let Some(txc) = st.clients.get(&id) {
+                    let _ = txc.send(ServerToClient::Registered {
+                        ok: true,
+                        reason: None,
+                    });
+                }
+            }
+
+            ClientToServer::CreateGroup { group } => {
+                let mut st = state.write().await;
+                let id = match client_id {
+                    Some(id) => id,
+                    None => {
+                        let _ = tx.send(ServerToClient::Error {
+                            reason: "Non registrato".into(),
+                        });
+                        continue;
+                    }
+                };
+                let g = st.groups.entry(group.clone()).or_default();
+                g.members.insert(id);
+            }
+
+            ClientToServer::Invite { group, nick } => {
+                let mut st = state.write().await;
+                if !st.groups.contains_key(&group) {
+                    let _ = tx.send(ServerToClient::Error {
+                        reason: format!("Gruppo {group} inesistente"),
+                    });
+                    continue;
+                }
+
+                let code = short_code();
+                st.invites.insert(code.clone(), (group.clone(), nick.clone()));
+
+                // In questo protocollo restituiamo all'invitante il codice invito
+                let _ = tx.send(ServerToClient::InviteCode { group, code });
+            }
+
+            ClientToServer::JoinGroup { group, invite_code } => {
+                let mut st = state.write().await;
+
+                let (g, allowed) = match st.invites.remove(&invite_code) {
+                    Some(v) => v,
+                    None => {
+                        let _ = tx.send(ServerToClient::Error {
+                            reason: "Invito non valido".into(),
+                        });
+                        continue;
+                    }
+                };
+
+                if g != group {
+                    let _ = tx.send(ServerToClient::Error {
+                        reason: "Invito non per questo gruppo".into(),
+                    });
+                    continue;
+                }
+
+                let id = match client_id {
+                    Some(id) => id,
+                    None => {
+                        let _ = tx.send(ServerToClient::Error {
+                            reason: "Non registrato".into(),
+                        });
+                        continue;
+                    }
+                };
+
+                let my_nick = st.nicks_by_id.get(&id).cloned().unwrap_or_default();
+                if my_nick != allowed {
+                    let _ = tx.send(ServerToClient::Error {
+                        reason: format!("Invito destinato a {allowed}"),
+                    });
+                    continue;
+                }
+
+                st.groups
+                    .entry(group.clone())
+                    .or_default()
+                    .members
+                    .insert(id);
+
+                let _ = tx.send(ServerToClient::Joined { group });
+            }
+
+            ClientToServer::SendPvtMessage {to, text} =>{
+                let st = state.read().await;
+
+                let id = match client_id{
+                    Some (id) => id, 
+                    None => {
+                        let _ = tx.send(ServerToClient::Error {
+                            reason: "Client not registered".into(),
+                        });
+                        continue;
+                    }
+                };
+
+                let my_nick = st
+                    .nicks_by_id
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| "???".into());
+
+                    let to_id = match st.users_by_nick.get(&to).copied() {
+                        Some(id) => id,
+                        None => {
+                            let _ = tx.send(ServerToClient::Error { reason: format!("User '{to}' unknown") });
+                            continue;
+                        }
+                    };
+
+                if let Some (txm) = st.clients.get(&to_id){
+                    let _ = txm.send(ServerToClient::SendPvtMessage {
+                        from: my_nick.clone(),
+                        text: text.clone(),
+                    });
+                } else {
+                    let _ = tx.send(ServerToClient::Error {
+                        reason: format!("User {to} does not exist"),
+                    });
+                }
+            }
+
+            ClientToServer::SendMessage { group, text } => {
+                let st = state.read().await;
+
+                let id = match client_id {
+                    Some(id) => id,
+                    None => {
+                        let _ = tx.send(ServerToClient::Error {
+                            reason: "Client not registered".into(),
+                        });
+                        continue;
+                    }
+                };
+
+                let my_nick = st
+                    .nicks_by_id
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| "???".into());
+
+                if let Some(g) = st.groups.get(&group) {
+                    for member in &g.members {
+                        if let Some(txm) = st.clients.get(member) {
+                            let _ = txm.send(ServerToClient::Message {
+                                group: group.clone(),
+                                from: my_nick.clone(),
+                                text: text.clone(),
+                            });
+                        }
+                    }
+                } else {
+                    let _ = tx.send(ServerToClient::Error {
+                        reason: format!("Group {group} does not exist"),
+                    });
+                }
+            }
+
+            ClientToServer::ListGroups => {
+                let st = state.read().await;
+
+                let id = match client_id {
+                    Some(id) => id,
+                    None => {
+                        let _ = tx.send(ServerToClient::Error {
+                            reason: "Non registrato".into(),
+                        });
+                        continue;
+                    }
+                };
+
+                let groups: Vec<String> = st
+                    .groups
+                    .iter()
+                    .filter(|(_, gr)| gr.members.contains(&id))
+                    .map(|(name, _)| name.clone())
+                    .collect();
+
+                let _ = tx.send(ServerToClient::Groups { groups });
+            }
+
+            ClientToServer::Logout => {
+                let mut st = state.write().await;
+                if let Some(id) = client_id.take() {
+                    st.clients.remove(&id);
+                }
+                break;
+            }
+
+            ClientToServer::Ping => {
+                let _ = tx.send(ServerToClient::Pong);
+            }
         }
     }
 
     Ok(())
+}
+
+// codice invito breve (6 char alfanumerici)
+fn short_code() -> String {
+    use rand::{distributions::Alphanumeric, Rng};
+    let mut rng = rand::thread_rng();
+    (0..6).map(|_| rng.sample(Alphanumeric) as char).collect()
 }
