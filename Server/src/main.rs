@@ -15,7 +15,7 @@ struct ChatMessage {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
 
-    // Avvio del logger in background
+    // Avvio del logger in background - task asincrono
     tokio::spawn(async {
         if let Err(e) = logger::start_cpu_logger("server_cpu.log").await {
             eprintln!("Errore logger CPU: {:?}", e);
