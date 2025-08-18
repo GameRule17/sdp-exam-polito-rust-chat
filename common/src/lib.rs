@@ -8,7 +8,7 @@ pub enum ClientToServer {
     CreateGroup { group: String },
     Invite { group: String, nick: String },
     JoinGroup { group: String, invite_code: String },
-    SendMessage { group: String, text: String },
+    SendMessage { group: String, text: String, nick: String },
     SendPvtMessage { to: String, text: String },
     GlobalMessage { text: String },
     ListGroups,

@@ -137,16 +137,28 @@ Comandi:
         if let Some(rest) = line.strip_prefix(r"\msg ") {
             let mut it = rest.splitn(2, ' ');
             if let (Some(group), Some(text)) = (it.next(), it.next()) {
-                let _ = send(&mut writer_half, &ClientToServer::SendMessage { group: group.into(), text: text.into() }).await;
+                let _ = send(&mut writer_half, &ClientToServer::SendMessage { group: group.into(), text: text.into(), nick: my_nick.clone() }).await;
             } else {
                 eprintln!("uso: \\msg <group> <text>");
             }
             continue;
         }
 
-       
+        if line.starts_with('\\') && !line.starts_with(r"\group") && !line.starts_with(r"\invite") &&
+        !line.starts_with(r"\join") && !line.starts_with(r"\list") && !line.starts_with(r"\msg") &&
+        !line.starts_with(r"\dm") && !line.starts_with(r"\help") && !line.starts_with(r"\quit") {
+         eprintln!("Comando sconosciuto: {line}");
+         continue;
+        }
+        // Se non è un comando, invia come messaggio globale
+        if (!line.starts_with('\\')) {
          let _ = send(&mut writer_half, &ClientToServer::GlobalMessage { text: line.clone() }).await;
+        }
+         //Se viene scritto \ e quello che viene dopo non corrisponde a nessuno dei comandi riconosciuti deve restituire un errore
+       
+
     }
+
 
     read_task.abort();
     Ok(())
