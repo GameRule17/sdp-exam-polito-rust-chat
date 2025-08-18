@@ -115,8 +115,13 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
         match msg {
             ClientToServer::Register { nick, client_id: req_id } => {
                 let mut st = state.write().await;
-
-                
+                if st.users_by_nick.contains_key(nick.as_str()) && st.users_by_nick.get(nick.as_str()) != Some(&req_id) {
+                    let _ = tx.send(ServerToClient::Registered {
+                        ok: false,
+                        reason: Some(format!("Nick '{}' già in uso", nick)),
+                    });
+                    continue; 
+                }
                 let id = st
                     .users_by_nick
                     .entry(nick.clone())
@@ -127,12 +132,10 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                 st.clients.insert(id, tx.clone());
                 client_id = Some(id);
 
-                if let Some(txc) = st.clients.get(&id) {
-                    let _ = txc.send(ServerToClient::Registered {
-                        ok: true,
-                        reason: None,
-                    });
-                }
+                let _ = tx.send(ServerToClient::Registered {
+                    ok: true,
+                    reason: None,
+                });
             }
 
             ClientToServer::CreateGroup { group } => {
@@ -147,8 +150,9 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     }
                 };
                 let g = st.groups.entry(group.clone()).or_default();
-                g.members.insert(id);
+                // g.members.insert(id);
             }
+
 
             ClientToServer::Invite { group, nick } => {
                 let mut st = state.write().await;
@@ -158,13 +162,31 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     });
                     continue;
                 }
+                let id_user = st.users_by_nick.get(&nick).cloned();
 
                 let code = short_code();
                 st.invites.insert(code.clone(), (group.clone(), nick.clone()));
 
-                // In questo protocollo restituiamo all'invitante il codice invito
-                let _ = tx.send(ServerToClient::InviteCode { group, code });
+                // invia il codice di invito al client a cui faccio riferimento con il comanda \invite 
+                if let Some(id) = id_user {
+                    if let Some(txm) = st.clients.get(&id) {
+                        let _ = txm.send(ServerToClient::InviteCode {
+                            group: group.clone(),
+                            code: code.clone(),
+                            client_id: client_id.and_then(|id| st.nicks_by_id.get(&id).cloned()).unwrap_or_default(),
+                        });
+                    } else {
+                        warn!("Client {} non trovato per invio codice invito", id);
+                    }
             }
+
+            //mi faccio restituire il codice di invito a me stesso una volta che ho creato il gruppo
+                let _ = tx.send(ServerToClient::InviteCodeForMe {
+                    group,
+                    code,
+                });
+        }
+
 
             ClientToServer::JoinGroup { group, invite_code } => {
                 let mut st = state.write().await;
@@ -309,6 +331,58 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     .collect();
 
                 let _ = tx.send(ServerToClient::Groups { groups });
+            }
+
+            ClientToServer::ListUsers => {
+                let st = state.read().await;
+
+                let id = match client_id {
+                    Some(id) => id,
+                    None => {
+                        let _ = tx.send(ServerToClient::Error {
+                            reason: "Non registrato".into(),
+                        });
+                        continue;
+                    }
+                };
+
+                let users: Vec<String> = st
+                    .nicks_by_id
+                    .iter()
+                    .filter(|(uid, _)| *uid != &id)
+                    .map(|(_, nick)| nick.clone())
+                    .collect();
+
+                let _ = tx.send(ServerToClient::ListUsers { users });
+            }
+
+            ClientToServer::GlobalMessage { text } => {
+                let st = state.read().await;
+
+                let id = match client_id {
+                    Some(id) => id,
+                    None => {
+                        let _ = tx.send(ServerToClient::Error {
+                            reason: "Non registrato".into(),
+                        });
+                        continue;
+                    }
+                };
+
+                let my_nick = st
+                    .nicks_by_id
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| "???".into());
+
+                for (client_id, txm) in &st.clients {
+                    if *client_id != id { // non inviare a se stessi
+                        let _ = txm.send(ServerToClient::GlobalMessage {
+                            from: my_nick.clone(),
+                            text: text.clone(),
+                        });
+                    }
+                }
             }
 
             ClientToServer::Logout => {

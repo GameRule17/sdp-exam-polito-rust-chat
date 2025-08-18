@@ -10,7 +10,9 @@ pub enum ClientToServer {
     JoinGroup { group: String, invite_code: String },
     SendMessage { group: String, text: String },
     SendPvtMessage { to: String, text: String },
+    GlobalMessage { text: String },
     ListGroups,
+    ListUsers,
     Logout,
     Ping,
 }
@@ -19,9 +21,12 @@ pub enum ClientToServer {
 #[serde(tag = "kind")]
 pub enum ServerToClient {
     Registered { ok: bool, reason: Option<String> },
-    InviteCode { group: String, code: String },
+    InviteCode { group: String, code: String, client_id: String },
+    InviteCodeForMe { group: String, code: String },
+    ListUsers {users : Vec<String>},
     Joined { group: String },
     Message { group: String, from: String, text: String },
+    GlobalMessage { from: String, text: String },
     SendPvtMessage { from: String, text: String },
     Groups { groups: Vec<String> },
     Error { reason: String },
