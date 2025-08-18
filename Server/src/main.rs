@@ -132,6 +132,8 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                 st.clients.insert(id, tx.clone());
                 client_id = Some(id);
 
+                println!("{} si è connesso al server", nick);
+
                 let _ = tx.send(ServerToClient::Registered {
                     ok: true,
                     reason: None,
@@ -140,7 +142,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
 
             ClientToServer::CreateGroup { group } => {
                 let mut st = state.write().await;
-                let id = match client_id {
+                let _ = match client_id {
                     Some(id) => id,
                     None => {
                         let _ = tx.send(ServerToClient::Error {
@@ -149,7 +151,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                         continue;
                     }
                 };
-                let g = st.groups.entry(group.clone()).or_default();
+                let _ = st.groups.entry(group.clone()).or_default();
                 // g.members.insert(id);
             }
 
@@ -388,6 +390,12 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
             ClientToServer::Logout => {
                 let mut st = state.write().await;
                 if let Some(id) = client_id.take() {
+                    let nick_opt = st.nicks_by_id.get(&id).cloned();
+                    if let Some(nick) = &nick_opt {
+                        println!("{} si è disconnesso dal server", nick);
+                        st.users_by_nick.remove(nick);
+                    }
+                    st.nicks_by_id.remove(&id);
                     st.clients.remove(&id);
                 }
                 break;
