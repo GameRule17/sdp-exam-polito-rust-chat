@@ -150,7 +150,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
 
             ClientToServer::CreateGroup { group } => {
                 let mut st = state.write().await;
-                let _ = match client_id {
+                let id = match client_id {
                     Some(id) => id,
                     None => {
                         let _ = tx.send(ServerToClient::Error {

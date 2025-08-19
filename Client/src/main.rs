@@ -36,7 +36,7 @@ async fn main() -> anyhow::Result<()> {
     let mut reader_lines = BufReader::new(reader_half).lines();
 
     // Stretta di mano con retry
-    let (_client_id, _): (Uuid, String) =
+    let (_client_id, my_nick): (Uuid, String) =
         register_handshake(&args, &mut *writer_half.lock().unwrap(), &mut reader_lines).await?;
 
     // Task che legge dal server
@@ -165,7 +165,7 @@ async fn main() -> anyhow::Result<()> {
             let mut it = rest.splitn(2, ' ');
             if let (Some(group), Some(text)) = (it.next(), it.next()) {
                 if let Ok(mut wh) = writer_half.lock() {
-                    let _ = send(&mut *wh, &ClientToServer::SendMessage { group: group.into(), text: text.into() }).await;
+                    let _ = send(&mut *wh, &ClientToServer::SendMessage { group: group.into(), text: text.into(), nick: my_nick.clone() }).await;
                 }
             } else {
                 eprintln!("uso: /msg <group> <text>");
