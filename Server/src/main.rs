@@ -10,6 +10,7 @@ use tokio::{
     sync::{mpsc, RwLock},
 };
 use tracing::{error, info, warn};
+use ctrlc;
 use uuid::Uuid;
 
 type Tx = mpsc::UnboundedSender<ServerToClient>;
@@ -44,6 +45,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Impostiamo il filtro a 'warn' per evitare log informativi all'avvio
     tracing_subscriber::fmt().with_env_filter("info").init();
 
     let args = Args::parse();
@@ -52,9 +54,15 @@ async fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind(&args.bind).await?;
     info!("Server in ascolto su {}", args.bind);
 
+    // Gestore CTRL+C per shutdown pulito
+    ctrlc::set_handler(move || {
+        println!("Server non più in ascolto");
+        std::process::exit(0);
+    }).expect("Errore nel registrare il gestore CTRL+C");
+
     loop {
-        let (socket, addr) = listener.accept().await?;
-        info!("Connessione da {}", addr);
+        let (socket, _addr) = listener.accept().await?;
+        // address intentionally ignored to avoid noisy logs
         let st = state.clone();
         tokio::spawn(async move {
             if let Err(e) = handle_conn(socket, st).await {
@@ -132,6 +140,8 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                 st.clients.insert(id, tx.clone());
                 client_id = Some(id);
 
+                println!("{} si è connesso al server", nick);
+
                 let _ = tx.send(ServerToClient::Registered {
                     ok: true,
                     reason: None,
@@ -140,7 +150,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
 
             ClientToServer::CreateGroup { group } => {
                 let mut st = state.write().await;
-                let id = match client_id {
+                let _ = match client_id {
                     Some(id) => id,
                     None => {
                         let _ = tx.send(ServerToClient::Error {
@@ -408,12 +418,20 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     }
                 }
             }
-            ClientToServer::Logout => {
+
+            ClientToServer::Logout { reason } => {
                 let mut st = state.write().await;
                 if let Some(id) = client_id.take() {
-                    if let Some(nick) = st.nicks_by_id.remove(&id) {
-                        st.users_by_nick.remove(&nick);
+                    let nick_opt = st.nicks_by_id.get(&id).cloned();
+                    if let Some(nick) = &nick_opt {
+                        if let Some(r) = reason {
+                            println!("{} si è disconnesso dal server ({})", nick, r);
+                        } else {
+                            println!("{} si è disconnesso dal server", nick);
+                        }
+                        st.users_by_nick.remove(nick);
                     }
+                    st.nicks_by_id.remove(&id);
                     st.clients.remove(&id);
                 }
                 break;
