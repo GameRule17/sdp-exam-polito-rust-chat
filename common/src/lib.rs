@@ -13,7 +13,7 @@ pub enum ClientToServer {
     GlobalMessage { text: String },
     ListGroups,
     ListUsers,
-    Logout,
+    Logout { reason: Option<String> },
     Ping,
 }
 

@@ -829,6 +829,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "ctrlc",
  "directories",
  "rand",
  "ruggine-common",

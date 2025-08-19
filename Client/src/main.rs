@@ -65,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
     let writer_half_ctrlc = Arc::clone(&writer_half);
     ctrlc::set_handler(move || {
         if let Ok(mut wh) = writer_half_ctrlc.lock() {
-            let _ = futures::executor::block_on(send(&mut *wh, &ClientToServer::Logout));
+            let _ = futures::executor::block_on(send(&mut *wh, &ClientToServer::Logout { reason: Some("CTRL+C".to_string()) }));
         }
         std::process::exit(0);
     }).expect("Errore nel gestire CTRL+C");
@@ -99,10 +99,10 @@ async fn main() -> anyhow::Result<()> {
             println!("");
             continue;
         }
-    else if line == "/quit" {
+        else if line == "/quit" {
             println!("Uscita dal client...");
             if let Ok(mut wh) = writer_half.lock() {
-                let _ = send(&mut *wh, &ClientToServer::Logout).await;
+                let _ = send(&mut *wh, &ClientToServer::Logout { reason: None }).await;
             }
             break;
         }
