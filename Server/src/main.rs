@@ -120,7 +120,10 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
             }
         };
 
+
+
         match msg {
+            
             ClientToServer::Register { nick, client_id: req_id } => {
                 let mut st = state.write().await;
                 if st.users_by_nick.contains_key(nick.as_str()) && st.users_by_nick.get(nick.as_str()) != Some(&req_id) {
@@ -148,6 +151,8 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                 });
             }
 
+            
+
             ClientToServer::CreateGroup { group } => {
                 let mut st = state.write().await;
                 let id = match client_id {
@@ -159,9 +164,17 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                         continue;
                     }
                 };
+
+                if (st.groups.contains_key(&group)) || (st.users_by_nick.get(&group).is_some()) {
+                    let _ = tx.send(ServerToClient::Error {
+                        reason: format!("Gruppo {group} già esistente"),
+                    });
+                    continue;
+                }
                 let g = st.groups.entry(group.clone()).or_default();
                  g.members.insert(id);
             }
+
 
 
             ClientToServer::Invite { group, nick } => {
@@ -173,6 +186,20 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     continue;
                 }
                 let id_user = st.users_by_nick.get(&nick).cloned();
+                
+                if (st.users_by_nick.get(&nick).is_none()) || (id_user.is_none()) {
+                    let _ = tx.send(ServerToClient::Error {
+                        reason: format!("Utente {nick} inesistente"),
+                    });
+                    continue;
+                }
+
+                if st.groups.get(&group).map_or(false, |g|g.members.contains(&id_user.unwrap())){
+                    let _ = tx.send(ServerToClient::Error {
+                        reason: format!("Utente {nick} già membro del gruppo {group}"),
+                    });
+                    continue;
+                }
 
                 let code = short_code();
                 st.invites.insert(code.clone(), (group.clone(), nick.clone()));
@@ -320,7 +347,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
 
                 if let Some(g) = st.groups.get(&group) {
                     for member in &g.members {
-                        if (member == &id) {
+                        if member == &id {
                             continue; // non inviare a se stessi
                         }
                         if let Some(txm) = st.clients.get(member) {
@@ -351,7 +378,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     }
                 };
 
-                if (st.groups.is_empty()) {
+                if st.groups.is_empty() {
                     let _ = tx.send(ServerToClient::Error {
                         reason: "Nessun gruppo disponibile".into(),
                     });

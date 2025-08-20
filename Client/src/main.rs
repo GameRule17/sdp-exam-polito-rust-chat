@@ -108,7 +108,7 @@ async fn main() -> anyhow::Result<()> {
         }
     else if let Some(rest) = line.strip_prefix("/create ") {
             if let Ok(mut wh) = writer_half.lock() {
-                let _ = send(&mut *wh, &ClientToServer::CreateGroup { group: rest.to_string() }).await;
+                let _ = send(&mut *wh, &ClientToServer::CreateGroup { group: rest.to_string()}).await;
             }
             continue;
         }
