@@ -51,8 +51,22 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let state = Arc::new(RwLock::new(State::default()));
 
-    let listener = TcpListener::bind(&args.bind).await?;
-    info!("Server in ascolto su {}", args.bind);
+    // Proviamo a bindare l'indirizzo; se fallisce mostriamo un messaggio più amichevole in italiano
+    let listener = match TcpListener::bind(&args.bind).await {
+        Ok(l) => {
+            info!("Server in ascolto su {}", args.bind);
+            l
+        }
+        Err(e) => {
+            use std::io::ErrorKind;
+            if e.kind() == ErrorKind::AddrInUse {
+                eprintln!("Errore: è già in esecuzione un server sulla stessa porta/indirizzo {} (indirizzo già in uso).", args.bind);
+            } else {
+                eprintln!("Impossibile avviare il server su {}: {}", args.bind, e);
+            }
+            std::process::exit(1);
+        }
+    };
 
     // Gestore CTRL+C per shutdown pulito
     ctrlc::set_handler(move || {
@@ -101,26 +115,28 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
     // id di questa connessione dopo Register
     let mut client_id: Option<Uuid> = None;
 
-    // loop di lettura NDJSON
-    while let Some(line) = reader.next_line().await? {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
+    // loop di lettura NDJSON — gestiamo anche EOF/errori come disconnessioni normali
+    loop {
+        match reader.next_line().await {
+            Ok(Some(line)) => {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
 
-        // parse sicuro del JSON -> enum
-        let msg: ClientToServer = match serde_json::from_str(line) {
-            Ok(m) => m,
-            Err(e) => {
-                error!("Errore parsing messaggio: {}", e);
-                let _ = tx.send(ServerToClient::Error {
-                    reason: "Malformed JSON".into(),
-                });
-                continue;
-            }
-        };
+                // parse sicuro del JSON -> enum
+                let msg: ClientToServer = match serde_json::from_str(line) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        error!("Errore parsing messaggio: {}", e);
+                        let _ = tx.send(ServerToClient::Error {
+                            reason: "Malformed JSON".into(),
+                        });
+                        continue;
+                    }
+                };
 
-        match msg {
+                match msg {
             ClientToServer::Register { nick, client_id: req_id } => {
                 let mut st = state.write().await;
                 if st.users_by_nick.contains_key(nick.as_str()) && st.users_by_nick.get(nick.as_str()) != Some(&req_id) {
@@ -160,7 +176,9 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     }
                 };
                 let g = st.groups.entry(group.clone()).or_default();
-                 g.members.insert(id);
+                g.members.insert(id);
+                // Conferma creazione gruppo
+                let _ = tx.send(ServerToClient::GroupCreated { group });
             }
 
 
@@ -245,44 +263,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                 let _ = tx.send(ServerToClient::Joined { group });
             }
 
-            ClientToServer::SendPvtMessage {to, text} =>{
-                let st = state.read().await;
-
-                let id = match client_id{
-                    Some (id) => id, 
-                    None => {
-                        let _ = tx.send(ServerToClient::Error {
-                            reason: "Client not registered".into(),
-                        });
-                        continue;
-                    }
-                };
-
-                let my_nick = st
-                    .nicks_by_id
-                    .get(&id)
-                    .cloned()
-                    .unwrap_or_else(|| "???".into());
-
-                    let to_id = match st.users_by_nick.get(&to).copied() {
-                        Some(id) => id,
-                        None => {
-                            let _ = tx.send(ServerToClient::Error { reason: format!("User '{to}' unknown") });
-                            continue;
-                        }
-                    };
-
-                if let Some (txm) = st.clients.get(&to_id){
-                    let _ = txm.send(ServerToClient::SendPvtMessage {
-                        from: my_nick.clone(),
-                        text: text.clone(),
-                    });
-                } else {
-                    let _ = tx.send(ServerToClient::Error {
-                        reason: format!("User {to} does not exist"),
-                    });
-                }
-            }
+            // SendPvtMessage handling removed (DM feature deprecated)
 
             ClientToServer::SendMessage { group, text, nick  } => {
                 let st = state.read().await;
@@ -320,7 +301,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
 
                 if let Some(g) = st.groups.get(&group) {
                     for member in &g.members {
-                        if (member == &id) {
+                        if member == &id {
                             continue; // non inviare a se stessi
                         }
                         if let Some(txm) = st.clients.get(member) {
@@ -351,7 +332,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     }
                 };
 
-                if (st.groups.is_empty()) {
+                if st.groups.is_empty() {
                     let _ = tx.send(ServerToClient::Error {
                         reason: "Nessun gruppo disponibile".into(),
                     });
@@ -380,12 +361,18 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     }
                 };
 
-                let users: Vec<String> = st
+                // Metti il richiedente come primo elemento marcato " (tu)" e ordina alfabeticamente gli altri
+                let mut others: Vec<String> = st
                     .nicks_by_id
                     .iter()
-                    .filter(|(uid, _)| *uid != &id)
-                    .map(|(_, nick)| nick.clone())
+                    .filter_map(|(uid, nick)| if uid == &id { None } else { Some(nick.clone()) })
                     .collect();
+                others.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+
+                let me = st.nicks_by_id.get(&id).cloned().unwrap_or_default();
+                let mut users: Vec<String> = Vec::with_capacity(1 + others.len());
+                users.push(format!("{} (tu)", me));
+                users.extend(others);
 
                 let _ = tx.send(ServerToClient::ListUsers { users });
             }
@@ -424,11 +411,16 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                 if let Some(id) = client_id.take() {
                     let nick_opt = st.nicks_by_id.get(&id).cloned();
                     if let Some(nick) = &nick_opt {
-                        if let Some(r) = reason {
-                            println!("{} si è disconnesso dal server ({})", nick, r);
-                        } else {
-                            println!("{} si è disconnesso dal server", nick);
-                        }
+                            // Se il client ha inviato un reason che indica CTRL+C, mostriamolo
+                            if let Some(r) = reason {
+                                if r.to_lowercase().contains("ctrl") || r.to_lowercase().contains("c") {
+                                            println!("{} si è disconnesso dal server (ctrl+c)", nick);
+                                } else {
+                                    println!("{} si è disconnesso dal server ({})", nick, r);
+                                }
+                            } else {
+                                println!("{} si è disconnesso dal server", nick);
+                            }
                         st.users_by_nick.remove(nick);
                     }
                     st.nicks_by_id.remove(&id);
@@ -439,6 +431,47 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
 
             ClientToServer::Ping => {
                 let _ = tx.send(ServerToClient::Pong);
+            }
+                }
+            }
+            Ok(None) => {
+                // EOF: client ha chiuso la connessione in modo pulito -> pulizia dello stato
+                if let Some(id) = client_id.take() {
+                    let mut st = state.write().await;
+                    let nick_opt = st.nicks_by_id.get(&id).cloned();
+                    if let Some(nick) = nick_opt {
+                        println!("{} si è disconnesso dal server", nick);
+                    }
+                    // rimuovi anche la mappatura users_by_nick per permettere nuovo login con lo stesso nick
+                    if let Some(nick) = st.nicks_by_id.get(&id).cloned() {
+                        st.users_by_nick.remove(&nick);
+                    }
+                    st.nicks_by_id.remove(&id);
+                    st.clients.remove(&id);
+                }
+                break;
+            }
+            Err(e) => {
+                // Se è un reset/abort/broken pipe, trattalo come disconnessione normale
+                use std::io::ErrorKind;
+                if matches!(e.kind(), ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted | ErrorKind::BrokenPipe) {
+                    if let Some(id) = client_id.take() {
+                        let mut st = state.write().await;
+                        let nick_opt = st.nicks_by_id.get(&id).cloned();
+                        if let Some(nick) = nick_opt {
+                            println!("{} si è disconnesso dal server", nick);
+                        }
+                        // rimuovi anche la mappatura users_by_nick
+                        if let Some(nick) = st.nicks_by_id.get(&id).cloned() {
+                            st.users_by_nick.remove(&nick);
+                        }
+                        st.nicks_by_id.remove(&id);
+                        st.clients.remove(&id);
+                    }
+                    break;
+                } else {
+                    return Err(e.into());
+                }
             }
         }
     }

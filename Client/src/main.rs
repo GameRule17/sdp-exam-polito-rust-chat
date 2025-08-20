@@ -5,9 +5,8 @@ use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines},
     net::TcpStream,
 };
-use std::sync::{Arc, Mutex};
-use futures;
-use ctrlc;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use uuid::Uuid;
 
@@ -35,40 +34,46 @@ async fn main() -> anyhow::Result<()> {
     let writer_half = Arc::new(Mutex::new(writer_half));
     let mut reader_lines = BufReader::new(reader_half).lines();
 
-    // Stretta di mano con retry
+    // Stretta di mano con retry: prendi il lock async temporaneamente
+    let mut wh = writer_half.lock().await;
     let (_client_id, my_nick): (Uuid, String) =
-        register_handshake(&args, &mut *writer_half.lock().unwrap(), &mut reader_lines).await?;
+        register_handshake(&args, &mut *wh, &mut reader_lines).await?;
+    drop(wh);
 
     // Task che legge dal server
     let mut reader_for_task = reader_lines;
     let read_task = tokio::spawn(async move {
         while let Ok(Some(line)) = reader_for_task.next_line().await {
-            if let Ok(msg) = serde_json::from_str::<ServerToClient>(&line) {
+                if let Ok(msg) = serde_json::from_str::<ServerToClient>(&line) {
                 match msg {
-                    ServerToClient::Registered{ok,reason} => println!("[server] registered: ok={} {:?}", ok, reason),
-                    ServerToClient::InviteCode{group,code, client_id} => println!("[server] invite for group '{}': {} by {}", group, code, client_id),
-                    ServerToClient::InviteCodeForMe{group,code} => println!("[server] group '{}': {}", group, code),
-                    ServerToClient::Joined{group} => println!("[server] joined group '{}'", group),
+                    ServerToClient::Registered{ok,reason} => println!("[server] registrazione: ok={} {:?}", ok, reason),
+                    ServerToClient::InviteCode{group,code, client_id} => println!("[server] codice invito per il gruppo '{}': {} da {}", group, code, client_id),
+                    ServerToClient::InviteCodeForMe{group,code} => println!("[server] codice invito per il gruppo '{}': {}", group, code),
+                    ServerToClient::Joined{group} => println!("[server] sei entrato nel gruppo '{}'", group),
                     ServerToClient::Message{group,from,text} => println!("[{}] <{}> {}", group, from, text),
-                    ServerToClient::SendPvtMessage{from,text} => println!("[private] <{}> {}", from, text),
-                    ServerToClient::Groups{groups} => println!("Groups: {:?}", groups),
+                    ServerToClient::Groups{groups} => println!("Gruppi: {:?}", groups),
                     ServerToClient::ListUsers { users } => println!("Users: {:?}", users),
-                    ServerToClient::Error{reason} => eprintln!("[error] {}", reason),
+                    ServerToClient::Error{reason} => eprintln!("[errore] {}", reason),
                     ServerToClient::Pong => println!("[server] pong"),
-                    ServerToClient::GlobalMessage { from, text } => println!("[global] <{}> {}", from, text),
+                    ServerToClient::GlobalMessage { from, text } => println!("[globale] <{}> {}", from, text),
+                    ServerToClient::GroupCreated { group } => println!("[server] gruppo '{}' creato correttamente!", group),
                 }
             }
         }
     });
 
-    // Gestione SIGINT (CTRL+C): invia sempre il logout al server
+    // Gestione SIGINT (CTRL+C): invia sempre il logout al server (async)
     let writer_half_ctrlc = Arc::clone(&writer_half);
-    ctrlc::set_handler(move || {
-        if let Ok(mut wh) = writer_half_ctrlc.lock() {
-            let _ = futures::executor::block_on(send(&mut *wh, &ClientToServer::Logout { reason: Some("CTRL+C".to_string()) }));
-        }
+    tokio::spawn(async move {
+        let _ = tokio::signal::ctrl_c().await;
+        let mut wh = writer_half_ctrlc.lock().await;
+        // invia logout e poi chiudi la metà di scrittura per assicurare il flush
+        let _ = send(&mut *wh, &ClientToServer::Logout { reason: Some("CTRL+C".to_string()) }).await;
+        // prova a chiudere/flushare la scrittura e attendi un breve intervallo
+        let _ = wh.shutdown().await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         std::process::exit(0);
-    }).expect("Errore nel gestire CTRL+C");
+    });
 
     // REPL
 
@@ -83,17 +88,16 @@ async fn main() -> anyhow::Result<()> {
         let line = buf.trim().to_string();
         if line.is_empty() { continue; }
 
-    if line == "/help" || line == "/"{
+        if line == "/help" || line == "/"{
             println!("");
             println!("==================== MENU COMANDI ====================");
-            println!("/help (or /)                 visualizza questo menu dettagliato");
+            println!("/help (o /)                 visualizza questo menu dettagliato");
             println!("/create <name>               crea un nuovo gruppo con nome <name>");
             println!("/invite <group> <nick>       invita l'utente <nick> nel gruppo <group>");
             println!("/join <group> <code>         entra nel gruppo <group> usando il codice <code>");
             println!("/groups                      mostra tutti i gruppi di cui fai parte");
             println!("/users                       mostra tutti gli utenti connessi");
             println!("/msg <group> <text>          invia il messaggio <text> al gruppo <group>");
-            println!("/dm <nick> <text>            invia un messaggio privato a <nick>");
             println!("/quit                        esci dal client");
             println!("======================================================");
             println!("");
@@ -101,22 +105,25 @@ async fn main() -> anyhow::Result<()> {
         }
         else if line == "/quit" {
             println!("Uscita dal client...");
-            if let Ok(mut wh) = writer_half.lock() {
+            {
+                let mut wh = writer_half.lock().await;
                 let _ = send(&mut *wh, &ClientToServer::Logout { reason: None }).await;
             }
             break;
         }
     else if let Some(rest) = line.strip_prefix("/create ") {
-            if let Ok(mut wh) = writer_half.lock() {
-                let _ = send(&mut *wh, &ClientToServer::CreateGroup { group: rest.to_string() }).await;
-            }
+        {
+            let mut wh = writer_half.lock().await;
+            let _ = send(&mut *wh, &ClientToServer::CreateGroup { group: rest.to_string() }).await;
+        }
             continue;
         }
 
     else if let Some(rest) = line.strip_prefix("/invite ") {
             let mut it = rest.splitn(2, ' ');
             if let (Some(group), Some(nick)) = (it.next(), it.next()) {
-                if let Ok(mut wh) = writer_half.lock() {
+                {
+                    let mut wh = writer_half.lock().await;
                     let _ = send(&mut *wh, &ClientToServer::Invite { group: group.into(), nick: nick.into() }).await;
                 }
             } else {
@@ -125,22 +132,13 @@ async fn main() -> anyhow::Result<()> {
             continue;
         }
 
-    else if let Some(rest) = line.strip_prefix("/dm ") {
-            let mut it = rest.splitn(2, ' ');
-            if let (Some(nick), Some(text)) = (it.next(), it.next()) {
-                if let Ok(mut wh) = writer_half.lock() {
-                    let _ = send(&mut *wh, &ClientToServer::SendPvtMessage { to: nick.into(), text: text.into() }).await;
-                }
-            } else {
-                eprintln!("uso: /dm <nick> <text>");
-            }
-            continue;
-        }
+    // /dm command removed
 
     else if let Some(rest) = line.strip_prefix("/join ") {
             let mut it = rest.splitn(2, ' ');
             if let (Some(group), Some(code)) = (it.next(), it.next()) {
-                if let Ok(mut wh) = writer_half.lock() {
+                {
+                    let mut wh = writer_half.lock().await;
                     let _ = send(&mut *wh, &ClientToServer::JoinGroup { group: group.into(), invite_code: code.into() }).await;
                 }
             } else {
@@ -149,13 +147,15 @@ async fn main() -> anyhow::Result<()> {
             continue;
         }
     else if line == "/users" {
-            if let Ok(mut wh) = writer_half.lock() {
+            {
+                let mut wh = writer_half.lock().await;
                 let _ = send(&mut *wh, &ClientToServer::ListUsers).await;
             }
             continue;
         }
     else if line == "/groups" {
-            if let Ok(mut wh) = writer_half.lock() {
+            {
+                let mut wh = writer_half.lock().await;
                 let _ = send(&mut *wh, &ClientToServer::ListGroups).await;
             }
             continue;
@@ -164,7 +164,8 @@ async fn main() -> anyhow::Result<()> {
     else if let Some(rest) = line.strip_prefix("/msg ") {
             let mut it = rest.splitn(2, ' ');
             if let (Some(group), Some(text)) = (it.next(), it.next()) {
-                if let Ok(mut wh) = writer_half.lock() {
+                {
+                    let mut wh = writer_half.lock().await;
                     let _ = send(&mut *wh, &ClientToServer::SendMessage { group: group.into(), text: text.into(), nick: my_nick.clone() }).await;
                 }
             } else {
@@ -176,7 +177,8 @@ async fn main() -> anyhow::Result<()> {
         else if line.starts_with('/') {
             println!("[server] comando errato");
         } else {
-            if let Ok(mut wh) = writer_half.lock() {
+            {
+                let mut wh = writer_half.lock().await;
                 let _ = send(&mut *wh, &ClientToServer::GlobalMessage { text: line.clone() }).await;
             }
         }
@@ -213,7 +215,7 @@ async fn register_handshake(args: &Args, writer: &mut OwnedWriteHalf, reader: &m
         };
 
         match serde_json::from_str::<ServerToClient>(&line) {
-            Ok(ServerToClient::Registered { ok, reason }) => {
+                Ok(ServerToClient::Registered { ok, reason }) => {
                 if ok {
                     println!("[server] utente {} loggato correttamente", nick);
                     println!("[server] Per visualizzare il menu invia '/' ");
@@ -227,10 +229,10 @@ async fn register_handshake(args: &Args, writer: &mut OwnedWriteHalf, reader: &m
                 }
             }
             Ok(other) => {
-                println!("[server] inatteso durante registrazione: {:?}", other);
+                println!("[server] risposta inattesa durante la registrazione: {:?}", other);
             }
             Err(e) => {
-                eprintln!("Parse risposta registrazione fallito: {e}");
+                eprintln!("Parse della risposta di registrazione fallito: {e}");
             }
         }
 
@@ -253,7 +255,7 @@ fn prompt_nick() -> anyhow::Result<String> {
         std::io::stdin().read_line(&mut s)?;
         let s = s.trim();
         if s.is_empty() {
-            eprintln!("Il nickname non può essere vuoto.");
+        eprintln!("Il nickname non può essere vuoto.");
             continue;
         }
         if s.len() > 32 {
