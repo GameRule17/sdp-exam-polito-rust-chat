@@ -227,6 +227,41 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
         }
 
 
+            ClientToServer::LeaveGroup { group } => {
+                let mut st = state.write().await;
+                let id = match client_id {
+                    Some(id) => id,
+                    None => {
+                        let _ = tx.send(ServerToClient::Error {
+                            reason: "Non registrato".into(),
+                        });
+                        continue;
+                    }
+                };
+
+                match st.groups.get_mut(&group) {
+                    Some(g) => {
+                        if !g.members.remove(&id) {
+                            let _ = tx.send(ServerToClient::Error {
+                                reason: format!("Non sei membro del gruppo {group}"),
+                            });
+                            continue;
+                        }
+                        if g.members.is_empty() {
+                            st.groups.remove(&group);
+                        }
+                        let _ = tx.send(ServerToClient::Left { group });
+                    }
+                    None => {
+                        let _ = tx.send(ServerToClient::Error {
+                            reason: format!("Gruppo {group} inesistente"),
+                        });
+                        continue;
+                    }
+                }
+            }
+
+
             ClientToServer::JoinGroup { group, invite_code } => {
                 let mut st = state.write().await;
 
@@ -273,6 +308,8 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
 
                 let _ = tx.send(ServerToClient::Joined { group });
             }
+
+            
 
             ClientToServer::SendPvtMessage {to, text} =>{
                 let st = state.read().await;
@@ -460,6 +497,11 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                         }
                         st.users_by_nick.remove(nick);
                     }
+                    // Rimuovi l'utente da tutti i gruppi e cancella i gruppi vuoti
+                    for (_name, g) in st.groups.iter_mut() {
+                        g.members.remove(&id);
+                    }
+                    st.groups.retain(|_, g| !g.members.is_empty());
                     st.nicks_by_id.remove(&id);
                     st.clients.remove(&id);
                 }

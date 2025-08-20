@@ -49,6 +49,7 @@ async fn main() -> anyhow::Result<()> {
                     ServerToClient::InviteCode{group,code, client_id} => println!("[server] invite for group '{}': {} by {}", group, code, client_id),
                     ServerToClient::InviteCodeForMe{group,code} => println!("[server] group '{}': {}", group, code),
                     ServerToClient::Joined{group} => println!("[server] joined group '{}'", group),
+                    ServerToClient::Left{group} => println!("[server] left group '{}'", group),
                     ServerToClient::Message{group,from,text} => println!("[{}] <{}> {}", group, from, text),
                     ServerToClient::SendPvtMessage{from,text} => println!("[private] <{}> {}", from, text),
                     ServerToClient::Groups{groups} => println!("Groups: {:?}", groups),
@@ -90,6 +91,7 @@ async fn main() -> anyhow::Result<()> {
             println!("/create <name>               crea un nuovo gruppo con nome <name>");
             println!("/invite <group> <nick>       invita l'utente <nick> nel gruppo <group>");
             println!("/join <group> <code>         entra nel gruppo <group> usando il codice <code>");
+            println!("/leave <group>               esci dal gruppo <group>");
             println!("/groups                      mostra tutti i gruppi di cui fai parte");
             println!("/users                       mostra tutti gli utenti connessi");
             println!("/msg <group> <text>          invia il messaggio <text> al gruppo <group>");
@@ -145,6 +147,15 @@ async fn main() -> anyhow::Result<()> {
                 }
             } else {
                 eprintln!("uso: /join <group> <code>");
+            }
+            continue;
+        }
+    else if let Some(group) = line.strip_prefix("/leave ") {
+            let group = group.trim();
+            if group.is_empty() {
+                eprintln!("uso: /leave <group>");
+            } else if let Ok(mut wh) = writer_half.lock() {
+                let _ = send(&mut *wh, &ClientToServer::LeaveGroup { group: group.into() }).await;
             }
             continue;
         }
