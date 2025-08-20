@@ -199,7 +199,7 @@ async fn send(writer: &mut OwnedWriteHalf, msg: &ClientToServer) -> anyhow::Resu
 async fn register_handshake(args: &Args, writer: &mut OwnedWriteHalf, reader: &mut Lines<BufReader<OwnedReadHalf>>,) -> anyhow::Result<(Uuid, String)> {
     loop {
         let nick: String = match &args.nick {
-            Some(n) => normalize_nick(n.clone())?,
+            Some(n) => n.trim().to_string(),
             None => prompt_nick()?,
         };
 
@@ -256,22 +256,8 @@ fn prompt_nick() -> anyhow::Result<String> {
             eprintln!("Il nickname non può essere vuoto.");
             continue;
         }
-        if s.len() > 32 {
-            eprintln!("Nickname troppo lungo (max 32).");
-            continue;
-        }
         return Ok(s.to_string());
     }
 }
 
-// Normalizza/valida nick passato da CLI
-fn normalize_nick(n: String) -> anyhow::Result<String> {
-    let s = n.trim().to_string();
-    if s.is_empty() {
-        anyhow::bail!("--nick non può essere vuoto");
-    }
-    if s.len() > 32 {
-        anyhow::bail!("--nick troppo lungo (max 32)");
-    }
-    Ok(s)
-}
+// Client: nessuna validazione rigida; il server applica le regole definitive

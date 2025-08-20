@@ -13,6 +13,9 @@ use tracing::{error, info, warn};
 use ctrlc;
 use uuid::Uuid;
 
+mod validation;
+use validation::validate_nick_syntax;
+
 type Tx = mpsc::UnboundedSender<ServerToClient>;
 type Rx = mpsc::UnboundedReceiver<ServerToClient>;
 
@@ -25,6 +28,8 @@ struct Group {
 struct State {
     
     users_by_nick: HashMap<String, Uuid>,
+    // Mappa per unicità case-insensitive (key = nick in minuscolo)
+    users_by_nick_ci: HashMap<String, Uuid>,
     
     nicks_by_id: HashMap<Uuid, String>,
     
@@ -122,13 +127,24 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
 
         match msg {
             ClientToServer::Register { nick, client_id: req_id } => {
+                // Validazione sintassi lato server
+                if let Err(reason) = validate_nick_syntax(&nick) {
+                    let _ = tx.send(ServerToClient::Registered { ok: false, reason: Some(reason) });
+                    continue;
+                }
+
                 let mut st = state.write().await;
-                if st.users_by_nick.contains_key(nick.as_str()) && st.users_by_nick.get(nick.as_str()) != Some(&req_id) {
-                    let _ = tx.send(ServerToClient::Registered {
-                        ok: false,
-                        reason: Some(format!("Nick '{}' già in uso", nick)),
-                    });
-                    continue; 
+
+                // Controllo unicità case-insensitive
+                let nick_lc = nick.to_ascii_lowercase();
+                if let Some(existing) = st.users_by_nick_ci.get(&nick_lc) {
+                    if existing != &req_id {
+                        let _ = tx.send(ServerToClient::Registered {
+                            ok: false,
+                            reason: Some(format!("Nick '{}' già in uso", nick)),
+                        });
+                        continue;
+                    }
                 }
                 let id = st
                     .users_by_nick
@@ -137,6 +153,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     .to_owned();
 
                 st.nicks_by_id.insert(id, nick.clone());
+                st.users_by_nick_ci.insert(nick_lc, id);
                 st.clients.insert(id, tx.clone());
                 client_id = Some(id);
 
@@ -430,6 +447,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                             println!("{} si è disconnesso dal server", nick);
                         }
                         st.users_by_nick.remove(nick);
+                        st.users_by_nick_ci.remove(&nick.to_ascii_lowercase());
                     }
                     st.nicks_by_id.remove(&id);
                     st.clients.remove(&id);
