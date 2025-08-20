@@ -60,11 +60,13 @@ async fn main() -> anyhow::Result<()> {
         Err(e) => {
             use std::io::ErrorKind;
             if e.kind() == ErrorKind::AddrInUse {
-                eprintln!("Errore: è già in esecuzione un server sulla stessa porta/indirizzo {} (indirizzo già in uso).", args.bind);
+                // messaggio semplice e non fatale: ritorniamo Ok(()) per evitare l'errore rosso di cargo
+                println!("Il server è già attivo su {}", args.bind);
+                return Ok(());
             } else {
-                eprintln!("Impossibile avviare il server su {}: {}", args.bind, e);
+                println!("Impossibile avviare il server su {}: {}", args.bind, e);
+                return Ok(());
             }
-            std::process::exit(1);
         }
     };
 
