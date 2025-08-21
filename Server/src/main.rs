@@ -141,6 +141,8 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     }
                 };
 
+
+
                 match msg {
             ClientToServer::Register { nick, client_id: req_id } => {
                 // Validazione sintassi lato server
@@ -190,6 +192,8 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                 });
             }
 
+            
+
             ClientToServer::CreateGroup { group } => {
                 let mut st = state.write().await;
                 let id = match client_id {
@@ -201,11 +205,19 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                         continue;
                     }
                 };
+
+                if (st.groups.contains_key(&group)) || (st.users_by_nick.get(&group).is_some()) {
+                    let _ = tx.send(ServerToClient::Error {
+                        reason: format!("Gruppo {group} già esistente"),
+                    });
+                    continue;
+                }
                 let g = st.groups.entry(group.clone()).or_default();
                 g.members.insert(id);
                 // Conferma creazione gruppo
                 let _ = tx.send(ServerToClient::GroupCreated { group });
             }
+
 
 
             ClientToServer::Invite { group, nick } => {
@@ -222,6 +234,20 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     .iter()
                     .find(|(existing_nick, _)| existing_nick.eq_ignore_ascii_case(&nick))
                     .map(|(_, id)| *id);
+                
+                if (st.users_by_nick.get(&nick).is_none()) || (id_user.is_none()) {
+                    let _ = tx.send(ServerToClient::Error {
+                        reason: format!("Utente {nick} inesistente"),
+                    });
+                    continue;
+                }
+
+                if st.groups.get(&group).map_or(false, |g|g.members.contains(&id_user.unwrap())){
+                    let _ = tx.send(ServerToClient::Error {
+                        reason: format!("Utente {nick} già membro del gruppo {group}"),
+                    });
+                    continue;
+                }
 
                 let code = short_code();
                 st.invites.insert(code.clone(), (group.clone(), nick.clone()));
