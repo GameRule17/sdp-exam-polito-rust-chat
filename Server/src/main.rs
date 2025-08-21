@@ -397,8 +397,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                         continue;
                     }
                 };
-
-                if st.groups.is_empty() {
+                
                 if st.groups.is_empty() {
                     let _ = tx.send(ServerToClient::Error {
                         reason: "Nessun gruppo disponibile".into(),
