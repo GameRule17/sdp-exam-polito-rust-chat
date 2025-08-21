@@ -152,7 +152,8 @@ async fn main() -> anyhow::Result<()> {
             let group = group.trim();
             if group.is_empty() {
                 eprintln!("uso: /leave <group>");
-            } else if let Ok(mut wh) = writer_half.lock() {
+            } else {
+                let mut wh = writer_half.lock().await;
                 let _ = send(&mut *wh, &ClientToServer::LeaveGroup { group: group.into() }).await;
             }
             continue;
