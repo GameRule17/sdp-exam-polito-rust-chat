@@ -13,6 +13,9 @@ use tracing::{error, info, warn};
 use ctrlc;
 use uuid::Uuid;
 
+mod validation;
+use validation::validate_nick_syntax;
+
 type Tx = mpsc::UnboundedSender<ServerToClient>;
 type Rx = mpsc::UnboundedReceiver<ServerToClient>;
 
@@ -140,25 +143,46 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
 
                 match msg {
             ClientToServer::Register { nick, client_id: req_id } => {
-                let mut st = state.write().await;
-                if st.users_by_nick.contains_key(nick.as_str()) && st.users_by_nick.get(nick.as_str()) != Some(&req_id) {
-                    let _ = tx.send(ServerToClient::Registered {
-                        ok: false,
-                        reason: Some(format!("Nick '{}' già in uso", nick)),
-                    });
-                    continue; 
+                // Validazione sintassi lato server
+                if let Err(reason) = validate_nick_syntax(&nick) {
+                    let _ = tx.send(ServerToClient::Registered { ok: false, reason: Some(reason) });
+                    continue;
                 }
-                let id = st
-                    .users_by_nick
-                    .entry(nick.clone())
-                    .or_insert(req_id)
-                    .to_owned();
 
-                st.nicks_by_id.insert(id, nick.clone());
+                let mut st = state.write().await;
+
+                // Controllo unicità case-insensitive senza hashmap aggiuntive
+                let maybe_existing = st
+                    .users_by_nick
+                    .iter()
+                    .find(|(existing_nick, _)| existing_nick.eq_ignore_ascii_case(&nick))
+                    .map(|(n, id)| (n.clone(), *id));
+
+                let (id, canonical_nick) = if let Some((existing_nick, existing_id)) = maybe_existing {
+                    if existing_id != req_id {
+                        let _ = tx.send(ServerToClient::Registered {
+                            ok: false,
+                            reason: Some(format!("Nick '{}' già in uso", nick)),
+                        });
+                        continue;
+                    }
+                    // stesso client che riprova con case diverso: riusa l'ID e il nick canonico
+                    (existing_id, existing_nick)
+                } else {
+                    // nuovo nick
+                    let id = st
+                        .users_by_nick
+                        .entry(nick.clone())
+                        .or_insert(req_id)
+                        .to_owned();
+                    (id, nick.clone())
+                };
+
+                st.nicks_by_id.insert(id, canonical_nick.clone());
                 st.clients.insert(id, tx.clone());
                 client_id = Some(id);
 
-                println!("{} si è connesso al server", nick);
+                println!("{} si è connesso al server", canonical_nick);
 
                 let _ = tx.send(ServerToClient::Registered {
                     ok: true,
@@ -192,7 +216,12 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     });
                     continue;
                 }
-                let id_user = st.users_by_nick.get(&nick).cloned();
+                // lookup utente destinatario case-insensitive
+                let id_user = st
+                    .users_by_nick
+                    .iter()
+                    .find(|(existing_nick, _)| existing_nick.eq_ignore_ascii_case(&nick))
+                    .map(|(_, id)| *id);
 
                 let code = short_code();
                 st.invites.insert(code.clone(), (group.clone(), nick.clone()));
@@ -216,6 +245,41 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     code,
                 });
         }
+
+
+            ClientToServer::LeaveGroup { group } => {
+                let mut st = state.write().await;
+                let id = match client_id {
+                    Some(id) => id,
+                    None => {
+                        let _ = tx.send(ServerToClient::Error {
+                            reason: "Non registrato".into(),
+                        });
+                        continue;
+                    }
+                };
+
+                match st.groups.get_mut(&group) {
+                    Some(g) => {
+                        if !g.members.remove(&id) {
+                            let _ = tx.send(ServerToClient::Error {
+                                reason: format!("Non sei membro del gruppo {group}"),
+                            });
+                            continue;
+                        }
+                        if g.members.is_empty() {
+                            st.groups.remove(&group);
+                        }
+                        let _ = tx.send(ServerToClient::Left { group });
+                    }
+                    None => {
+                        let _ = tx.send(ServerToClient::Error {
+                            reason: format!("Gruppo {group} inesistente"),
+                        });
+                        continue;
+                    }
+                }
+            }
 
 
             ClientToServer::JoinGroup { group, invite_code } => {
@@ -335,6 +399,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                 };
 
                 if st.groups.is_empty() {
+                if st.groups.is_empty() {
                     let _ = tx.send(ServerToClient::Error {
                         reason: "Nessun gruppo disponibile".into(),
                     });
@@ -425,6 +490,11 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                             }
                         st.users_by_nick.remove(nick);
                     }
+                    // Rimuovi l'utente da tutti i gruppi e cancella i gruppi vuoti
+                    for (_name, g) in st.groups.iter_mut() {
+                        g.members.remove(&id);
+                    }
+                    st.groups.retain(|_, g| !g.members.is_empty());
                     st.nicks_by_id.remove(&id);
                     st.clients.remove(&id);
                 }
