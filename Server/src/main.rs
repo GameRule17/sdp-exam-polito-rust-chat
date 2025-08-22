@@ -286,11 +286,14 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     }
             }
 
-            //mi faccio restituire il codice di invito a me stesso una volta che ho creato il gruppo
-                let _ = tx.send(ServerToClient::InviteCodeForMe {
-                    group,
-                    code,
-                });
+            // //mi faccio restituire il codice di invito a me stesso una volta che ho creato il gruppo
+            //     let _ = tx.send(ServerToClient::InviteCodeForMe {
+            //         group,
+            //         code,
+            //     });
+
+            let _=tx.send(ServerToClient::MessageServer { text: "Utente ".to_string() + &nick + " invitato correttamente al gruppo "+ &group });
+            
         }
 
 
