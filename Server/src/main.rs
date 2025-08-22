@@ -14,7 +14,7 @@ use ctrlc;
 use uuid::Uuid;
 
 mod validation;
-use validation::validate_nick_syntax;
+use validation::{validate_nick_syntax, validate_group_name_syntax};
 
 type Tx = mpsc::UnboundedSender<ServerToClient>;
 type Rx = mpsc::UnboundedReceiver<ServerToClient>;
@@ -210,6 +210,16 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     }
                 };
 
+                if let Err(reason) = validate_group_name_syntax(&group) {
+                    let _ = tx.send(ServerToClient::Error { reason });
+                    continue;
+                }
+
+                if let Err(reason) = validate_group_name_syntax(&group) {
+                    let _ = tx.send(ServerToClient::Error { reason });
+                    continue;
+                }
+
                 // Controllo case-insensitive per i gruppi
                 let maybe_existing_group = st
                     .groups
@@ -227,6 +237,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     });
                     continue;
                 }
+                
                 if st.users_by_nick.get(&group).is_some() {
                     let _ = tx.send(ServerToClient::Error {
                         reason: format!("Il nome '{group}' è già usato da un utente"),
