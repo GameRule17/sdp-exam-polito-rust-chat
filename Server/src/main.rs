@@ -164,7 +164,11 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     if existing_id != req_id {
                         let _ = tx.send(ServerToClient::Registered {
                             ok: false,
-                            reason: Some(format!("Nick '{}' già in uso", nick)),
+                            reason: Some(format!(
+                                "Esiste già un utente con il nome '{}' (già registrato come '{}')",
+                                nick,
+                                existing_nick
+                            )),
                         });
                         continue;
                     }
