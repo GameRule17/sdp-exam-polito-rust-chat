@@ -17,5 +17,5 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 directories = "5"
 rand = "0.8"
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+chrono = "0.4"
 ctrlc = "3"
