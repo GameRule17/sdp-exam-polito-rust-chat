@@ -1,31 +1,62 @@
-// Server-side nickname validation rules
-// - non empty, max 32 chars
-// - ASCII only
-// - no whitespace
-// - must start with ASCII letter [A-Za-z]
-// - only ASCII alphanumeric [A-Za-z0-9]
+/*  
+    Regole comuni di validazione lato server per nickname e nomi dei gruppi
+    - non vuoto, max 32 caratteri
+    - solo ASCII
+    - niente whitespace
+    - deve iniziare con lettera ASCII [A-Za-z]
+    - solo alfanumerico ASCII [A-Za-z0-9]
+*/
 
-pub fn validate_nick_syntax(s: &str) -> Result<(), String> {
+// Tipo di identificatore che stiamo validando
+pub enum NameKind {
+    Nick,
+    Group,
+}
+
+impl NameKind {
+    fn label(&self) -> &'static str {
+        match self { 
+            Self::Nick => "nickname", 
+            Self::Group => "nome del gruppo"
+        }
+    }
+    fn capital_label(&self) -> &'static str {
+        match self {
+            Self::Nick => "Nickname",
+            Self::Group => "Nome del gruppo"
+        }
+    }
+}
+
+/// Valida un identificatore generico usato come nickname o nome gruppo.
+pub fn validate_identifier(kind: NameKind, s: &str) -> Result<(), String> {
     if s.is_empty() {
-        return Err("Il nickname non può essere vuoto.".into());
+        return Err(format!("Il {} non può essere vuoto.", kind.label()));
     }
     if s.len() > 32 {
-        return Err("Nickname troppo lungo (max 32).".into());
+        return Err(format!("{} troppo lungo (max 32).", kind.capital_label()));
     }
     if !s.is_ascii() {
         return Err("Sono consentiti solo caratteri ASCII.".into());
     }
     if s.chars().any(|c| c.is_whitespace()) {
-        return Err("Il nickname non può contenere spazi o caratteri di whitespace.".into());
+        return Err(format!("Il {} non può contenere spazi o caratteri di whitespace.", kind.label()));
     }
-    let mut chars = s.chars();
-    if let Some(first) = chars.next() {
+    if let Some(first) = s.chars().next() {
         if !first.is_ascii_alphabetic() {
-            return Err("Il nickname deve iniziare con una lettera (A-Z o a-z).".into());
+            return Err(format!("Il {} deve iniziare con una lettera (A-Z o a-z).", kind.label()));
         }
     }
     if !s.chars().all(|c| c.is_ascii_alphanumeric()) {
-        return Err("Il nickname può contenere solo lettere e numeri (niente simboli).".into());
+        return Err(format!("Il {} può contenere solo lettere e numeri (niente simboli).", kind.label()));
     }
     Ok(())
+}
+
+pub fn validate_nick_syntax(s: &str) -> Result<(), String> {
+    validate_identifier(NameKind::Nick, s)
+}
+
+pub fn validate_group_name_syntax(s: &str) -> Result<(), String> {
+    validate_identifier(NameKind::Group, s)
 }

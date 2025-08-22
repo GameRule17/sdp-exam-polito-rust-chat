@@ -14,7 +14,7 @@ use ctrlc;
 use uuid::Uuid;
 
 mod validation;
-use validation::validate_nick_syntax;
+use validation::{validate_nick_syntax, validate_group_name_syntax};
 
 type Tx = mpsc::UnboundedSender<ServerToClient>;
 type Rx = mpsc::UnboundedReceiver<ServerToClient>;
@@ -205,6 +205,11 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                         continue;
                     }
                 };
+
+                if let Err(reason) = validate_group_name_syntax(&group) {
+                    let _ = tx.send(ServerToClient::Error { reason });
+                    continue;
+                }
 
                 if (st.groups.contains_key(&group)) || (st.users_by_nick.get(&group).is_some()) {
                     let _ = tx.send(ServerToClient::Error {
