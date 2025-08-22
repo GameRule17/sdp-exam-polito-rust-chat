@@ -44,17 +44,17 @@ async fn main() -> anyhow::Result<()> {
     let mut reader_for_task = reader_lines;
     let read_task = tokio::spawn(async move {
         while let Ok(Some(line)) = reader_for_task.next_line().await {
-                if let Ok(msg) = serde_json::from_str::<ServerToClient>(&line) {
+            if let Ok(msg) = serde_json::from_str::<ServerToClient>(&line) {
                 match msg {
                     ServerToClient::Registered{ok,reason} => println!("[server] registrazione: ok={} {:?}", ok, reason),
                     ServerToClient::InviteCode{group,code, client_id} => println!("[server] codice invito per il gruppo '{}': {} da {}", group, code, client_id),
                     ServerToClient::InviteCodeForMe{group,code} => println!("[server] codice invito per il gruppo '{}': {}", group, code),
                     ServerToClient::Joined{group} => println!("[server] sei entrato nel gruppo '{}'", group),
-                    ServerToClient::Left{group} => println!("[server] left group '{}'", group),
+                    ServerToClient::Left{group} => println!("[server] sei uscito dal gruppo '{}'", group),
                     ServerToClient::Message{group,from,text} => println!("[{}] <{}> {}", group, from, text),
-                    ServerToClient::Groups{groups} => println!("Gruppi: {:?}", groups),
+                    ServerToClient::Groups{groups} => println!("Gruppi di appartenenza: {:?}", groups),
                     ServerToClient::ListUsers { users } => println!("Users: {:?}", users),
-                    ServerToClient::Error{reason} => eprintln!("[errore] {}", reason),
+                    ServerToClient::Error{reason} => eprintln!("[server] {}", reason),
                     ServerToClient::Pong => println!("[server] pong"),
                     ServerToClient::GlobalMessage { from, text } => println!("[globale] <{}> {}", from, text),
                     ServerToClient::GroupCreated { group } => println!("[server] gruppo '{}' creato correttamente!", group),

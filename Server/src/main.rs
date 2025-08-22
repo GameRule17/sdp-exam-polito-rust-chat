@@ -210,9 +210,26 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     }
                 };
 
-                if (st.groups.contains_key(&group)) || (st.users_by_nick.get(&group).is_some()) {
+                // Controllo case-insensitive per i gruppi
+                let maybe_existing_group = st
+                    .groups
+                    .keys()
+                    .find(|existing_group| existing_group.eq_ignore_ascii_case(&group))
+                    .cloned();
+
+                if let Some(existing_group) = maybe_existing_group {
                     let _ = tx.send(ServerToClient::Error {
-                        reason: format!("Gruppo {group} già esistente"),
+                        reason: format!(
+                            "Esiste già un gruppo con il nome '{}' (già registrato come '{}')",
+                            group,
+                            existing_group
+                        ),
+                    });
+                    continue;
+                }
+                if st.users_by_nick.get(&group).is_some() {
+                    let _ = tx.send(ServerToClient::Error {
+                        reason: format!("Il nome '{group}' è già usato da un utente"),
                     });
                     continue;
                 }
@@ -427,19 +444,20 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                         continue;
                     }
                 };
-                
-                if st.groups.is_empty() {
-                    let _ = tx.send(ServerToClient::Error {
-                        reason: "Nessun gruppo disponibile".into(),
-                    });
-                    continue;
-                }
+
                 let groups: Vec<String> = st
                     .groups
                     .iter()
                     .filter(|(_, gr)| gr.members.contains(&id))
                     .map(|(name, _)| name.clone())
                     .collect();
+
+                if groups.is_empty() {
+                    let _ = tx.send(ServerToClient::Error {
+                        reason: "Nessun gruppo di appartenenza".into(),
+                    });
+                    continue;
+                }
 
                 let _ = tx.send(ServerToClient::Groups { groups });
             }
