@@ -5,3 +5,5 @@
 **/*.exe
 **/.cargo-lock
 **/.rustc_info.json
+# Log file del server
+Server/server_cpu.log
