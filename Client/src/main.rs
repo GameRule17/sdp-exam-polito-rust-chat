@@ -1,20 +1,20 @@
 use clap::Parser;
 use ruggine_common::{ClientToServer, ServerToClient};
 use std::io::{self, Write};
+use std::sync::Arc;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::sync::Mutex;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines},
     net::TcpStream,
 };
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use uuid::Uuid;
 
 #[derive(Parser, Debug)]
-#[command(name="ruggine-client")]
+#[command(name = "ruggine-client")]
 struct Args {
     /// Indirizzo del server es. 127.0.0.1:7000
-    #[arg(long, default_value="127.0.0.1:7000")]
+    #[arg(long, default_value = "127.0.0.1:7000")]
     server: String,
 
     /// Nickname (se omesso, verrà richiesto all'avvio e ritentato se rifiutato)
@@ -46,19 +46,42 @@ async fn main() -> anyhow::Result<()> {
         while let Ok(Some(line)) = reader_for_task.next_line().await {
             if let Ok(msg) = serde_json::from_str::<ServerToClient>(&line) {
                 match msg {
-                    ServerToClient::Registered{ok,reason} => println!("[server] registrazione: ok={} {:?}", ok, reason),
-                    ServerToClient::InviteCode{group,code, client_id} => println!("[server] codice invito per il gruppo '{}': {} da {}", group, code, client_id),
-                    ServerToClient::InviteCodeForMe{group,code} => println!("[server] codice invito per il gruppo '{}': {}", group, code),
-                    ServerToClient::Joined{group} => println!("[server] sei entrato nel gruppo '{}'", group),
-                    ServerToClient::Left{group} => println!("[server] sei uscito dal gruppo '{}'", group),
-                    ServerToClient::Message{group,from,text} => println!("[{}] <{}> {}", group, from, text),
+                    ServerToClient::Registered { ok, reason } => {
+                        println!("[server] registrazione: ok={} {:?}", ok, reason)
+                    }
+                    ServerToClient::InviteCode {
+                        group,
+                        code,
+                        client_id,
+                    } => println!(
+                        "[server] codice invito per il gruppo '{}': {} da {}",
+                        group, code, client_id
+                    ),
+                    ServerToClient::InviteCodeForMe { group, code } => {
+                        println!("[server] codice invito per il gruppo '{}': {}", group, code)
+                    }
+                    ServerToClient::Joined { group } => {
+                        println!("[server] sei entrato nel gruppo '{}'", group)
+                    }
+                    ServerToClient::Left { group } => {
+                        println!("[server] sei uscito dal gruppo '{}'", group)
+                    }
+                    ServerToClient::Message { group, from, text } => {
+                        println!("[{}] <{}> {}", group, from, text)
+                    }
                     ServerToClient::MessageServer { text } => println!("[server] {}", text),
-                    ServerToClient::Groups{groups} => println!("Gruppi di appartenenza: {:?}", groups),
+                    ServerToClient::Groups { groups } => {
+                        println!("Gruppi di appartenenza: {:?}", groups)
+                    }
                     ServerToClient::ListUsers { users } => println!("Users: {:?}", users),
-                    ServerToClient::Error{reason} => eprintln!("[server] {}", reason),
+                    ServerToClient::Error { reason } => eprintln!("[server] {}", reason),
                     ServerToClient::Pong => println!("[server] pong"),
-                    ServerToClient::GlobalMessage { from, text } => println!("[globale] <{}> {}", from, text),
-                    ServerToClient::GroupCreated { group } => println!("[server] gruppo '{}' creato correttamente!", group),
+                    ServerToClient::GlobalMessage { from, text } => {
+                        println!("[globale] <{}> {}", from, text)
+                    }
+                    ServerToClient::GroupCreated { group } => {
+                        println!("[server] gruppo '{}' creato correttamente!", group)
+                    }
                 }
             }
         }
@@ -70,7 +93,13 @@ async fn main() -> anyhow::Result<()> {
         let _ = tokio::signal::ctrl_c().await;
         let mut wh = writer_half_ctrlc.lock().await;
         // invia logout e poi chiudi la metà di scrittura per assicurare il flush
-        let _ = send(&mut *wh, &ClientToServer::Logout { reason: Some("CTRL+C".to_string()) }).await;
+        let _ = send(
+            &mut *wh,
+            &ClientToServer::Logout {
+                reason: Some("CTRL+C".to_string()),
+            },
+        )
+        .await;
         // prova a chiudere/flushare la scrittura e attendi un breve intervallo
         let _ = wh.shutdown().await;
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -85,18 +114,24 @@ async fn main() -> anyhow::Result<()> {
     loop {
         buf.clear();
         let n = tokio::io::AsyncBufReadExt::read_line(&mut stdin_reader, &mut buf).await?;
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
 
         let line = buf.trim().to_string();
-        if line.is_empty() { continue; }
+        if line.is_empty() {
+            continue;
+        }
 
-        if line == "/help" || line == "/"{
+        if line == "/help" || line == "/" {
             println!("");
             println!("==================== MENU COMANDI ====================");
             println!("/help (o /)                 visualizza questo menu dettagliato");
             println!("/create <name>               crea un nuovo gruppo con nome <name>");
             println!("/invite <group> <nick>       invita l'utente <nick> nel gruppo <group>");
-            println!("/join <group> <code>         entra nel gruppo <group> usando il codice <code>");
+            println!(
+                "/join <group> <code>         entra nel gruppo <group> usando il codice <code>"
+            );
             println!("/leave <group>               esci dal gruppo <group>");
             println!("/groups                      mostra tutti i gruppi di cui fai parte");
             println!("/users                       mostra tutti gli utenti connessi");
@@ -105,98 +140,122 @@ async fn main() -> anyhow::Result<()> {
             println!("======================================================");
             println!("");
             continue;
-        }
-        else if line == "/quit" {
+        } else if line == "/quit" {
             println!("Uscita dal client...");
             {
                 let mut wh = writer_half.lock().await;
                 let _ = send(&mut *wh, &ClientToServer::Logout { reason: None }).await;
             }
             break;
-        }
-    else if let Some(rest) = line.strip_prefix("/create ") {
-        {
-            let mut wh = writer_half.lock().await;
-            let _ = send(&mut *wh, &ClientToServer::CreateGroup { group: rest.to_string() }).await;
-        }
+        } else if let Some(rest) = line.strip_prefix("/create ") {
+            {
+                let mut wh = writer_half.lock().await;
+                let _ = send(
+                    &mut *wh,
+                    &ClientToServer::CreateGroup {
+                        group: rest.to_string(),
+                    },
+                )
+                .await;
+            }
             continue;
-        }
-
-    else if let Some(rest) = line.strip_prefix("/invite ") {
+        } else if let Some(rest) = line.strip_prefix("/invite ") {
             let mut it = rest.splitn(2, ' ');
             if let (Some(group), Some(nick)) = (it.next(), it.next()) {
                 {
                     let mut wh = writer_half.lock().await;
-                    let _ = send(&mut *wh, &ClientToServer::Invite { group: group.into(), nick: nick.into() }).await;
+                    let _ = send(
+                        &mut *wh,
+                        &ClientToServer::Invite {
+                            group: group.into(),
+                            nick: nick.into(),
+                        },
+                    )
+                    .await;
                 }
             } else {
                 eprintln!("uso: /invite <group> <nick>");
             }
             continue;
         }
-
-    // /dm command removed
-
-    else if let Some(rest) = line.strip_prefix("/join ") {
+        // /dm command removed
+        else if let Some(rest) = line.strip_prefix("/join ") {
             let mut it = rest.splitn(2, ' ');
             if let (Some(group), Some(code)) = (it.next(), it.next()) {
                 {
                     let mut wh = writer_half.lock().await;
-                    let _ = send(&mut *wh, &ClientToServer::JoinGroup { group: group.into(), invite_code: code.into() }).await;
+                    let _ = send(
+                        &mut *wh,
+                        &ClientToServer::JoinGroup {
+                            group: group.into(),
+                            invite_code: code.into(),
+                        },
+                    )
+                    .await;
                 }
             } else {
                 eprintln!("uso: /join <group> <code>");
             }
             continue;
-        }
-    else if let Some(group) = line.strip_prefix("/leave ") {
+        } else if let Some(group) = line.strip_prefix("/leave ") {
             let group = group.trim();
             if group.is_empty() {
                 eprintln!("uso: /leave <group>");
             } else {
                 let mut wh = writer_half.lock().await;
-                let _ = send(&mut *wh, &ClientToServer::LeaveGroup { group: group.into() }).await;
+                let _ = send(
+                    &mut *wh,
+                    &ClientToServer::LeaveGroup {
+                        group: group.into(),
+                    },
+                )
+                .await;
             }
             continue;
-        }
-    else if line == "/users" {
+        } else if line == "/users" {
             {
                 let mut wh = writer_half.lock().await;
                 let _ = send(&mut *wh, &ClientToServer::ListUsers).await;
             }
             continue;
-        }
-    else if line == "/groups" {
+        } else if line == "/groups" {
             {
                 let mut wh = writer_half.lock().await;
                 let _ = send(&mut *wh, &ClientToServer::ListGroups).await;
             }
             continue;
-        }
-
-    else if let Some(rest) = line.strip_prefix("/msg ") {
+        } else if let Some(rest) = line.strip_prefix("/msg ") {
             let mut it = rest.splitn(2, ' ');
             if let (Some(group), Some(text)) = (it.next(), it.next()) {
                 {
                     let mut wh = writer_half.lock().await;
-                    let _ = send(&mut *wh, &ClientToServer::SendMessage { group: group.into(), text: text.into(), nick: my_nick.clone() }).await;
+                    let _ = send(
+                        &mut *wh,
+                        &ClientToServer::SendMessage {
+                            group: group.into(),
+                            text: text.into(),
+                            nick: my_nick.clone(),
+                        },
+                    )
+                    .await;
                 }
             } else {
                 eprintln!("uso: /msg <group> <text>");
             }
             continue;
-        }
-
-        else if line.starts_with('/') {
+        } else if line.starts_with('/') {
             println!("[server] comando errato");
         } else {
             {
                 let mut wh = writer_half.lock().await;
-                let _ = send(&mut *wh, &ClientToServer::GlobalMessage { text: line.clone() }).await;
+                let _ = send(
+                    &mut *wh,
+                    &ClientToServer::GlobalMessage { text: line.clone() },
+                )
+                .await;
             }
         }
     }
-
 
     read_task.abort();
     Ok(())
@@ -211,7 +270,11 @@ async fn send(writer: &mut OwnedWriteHalf, msg: &ClientToServer) -> anyhow::Resu
 }
 
 // Registrazione con retry finché il nick è accettato
-async fn register_handshake(args: &Args, writer: &mut OwnedWriteHalf, reader: &mut Lines<BufReader<OwnedReadHalf>>,) -> anyhow::Result<(Uuid, String)> {
+async fn register_handshake(
+    args: &Args,
+    writer: &mut OwnedWriteHalf,
+    reader: &mut Lines<BufReader<OwnedReadHalf>>,
+) -> anyhow::Result<(Uuid, String)> {
     loop {
         let nick: String = match &args.nick {
             Some(n) => n.trim().to_string(),
@@ -219,7 +282,14 @@ async fn register_handshake(args: &Args, writer: &mut OwnedWriteHalf, reader: &m
         };
 
         let client_id = Uuid::new_v4();
-        send(writer, &ClientToServer::Register { nick: nick.clone(), client_id }).await?;
+        send(
+            writer,
+            &ClientToServer::Register {
+                nick: nick.clone(),
+                client_id,
+            },
+        )
+        .await?;
 
         // Aspetta una risposta
         let line = match reader.next_line().await? {
@@ -228,7 +298,7 @@ async fn register_handshake(args: &Args, writer: &mut OwnedWriteHalf, reader: &m
         };
 
         match serde_json::from_str::<ServerToClient>(&line) {
-                Ok(ServerToClient::Registered { ok, reason }) => {
+            Ok(ServerToClient::Registered { ok, reason }) => {
                 if ok {
                     println!("[server] utente {} loggato correttamente", nick);
                     println!("[server] Per visualizzare il menu invia '/' ");
@@ -242,7 +312,10 @@ async fn register_handshake(args: &Args, writer: &mut OwnedWriteHalf, reader: &m
                 }
             }
             Ok(other) => {
-                println!("[server] risposta inattesa durante la registrazione: {:?}", other);
+                println!(
+                    "[server] risposta inattesa durante la registrazione: {:?}",
+                    other
+                );
             }
             Err(e) => {
                 eprintln!("Parse della risposta di registrazione fallito: {e}");
@@ -268,7 +341,7 @@ fn prompt_nick() -> anyhow::Result<String> {
         std::io::stdin().read_line(&mut s)?;
         let s = s.trim();
         if s.is_empty() {
-        eprintln!("Il nickname non può essere vuoto.");
+            eprintln!("Il nickname non può essere vuoto.");
             continue;
         }
         return Ok(s.to_string());
