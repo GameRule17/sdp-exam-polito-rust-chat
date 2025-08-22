@@ -28,6 +28,7 @@ pub enum ServerToClient {
     Joined { group: String },
     Left { group: String },
     Message { group: String, from: String, text: String },
+    MessageServer { text: String },
     GlobalMessage { from: String, text: String },
     // SendPvtMessage removed (DM feature deprecated)
     Groups { groups: Vec<String> },

@@ -52,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
                     ServerToClient::Joined{group} => println!("[server] sei entrato nel gruppo '{}'", group),
                     ServerToClient::Left{group} => println!("[server] left group '{}'", group),
                     ServerToClient::Message{group,from,text} => println!("[{}] <{}> {}", group, from, text),
+                    ServerToClient::MessageServer { text } => println!("[server] {}", text),
                     ServerToClient::Groups{groups} => println!("Gruppi: {:?}", groups),
                     ServerToClient::ListUsers { users } => println!("Users: {:?}", users),
                     ServerToClient::Error{reason} => eprintln!("[errore] {}", reason),
