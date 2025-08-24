@@ -122,33 +122,48 @@ async fn main() -> anyhow::Result<()> {
     let mut stdout = io::stdout();
     terminal::enable_raw_mode()?;
     stdout.execute(terminal::EnterAlternateScreen)?;
+    // Abilita cattura eventi mouse per lo scroll
+    stdout.execute(crossterm::event::EnableMouseCapture)?;
     // semplice prompt persistente
     let prompt = "> ";
     let mut input = String::new();
+    let mut messages: Vec<String> = Vec::new();
+    let mut scroll_offset: usize = 0; // 0 = fondo, >0 = quante righe sopra il fondo
 
-    // Funzione locale per ridisegnare la riga corrente
-    let redraw = |stdout: &mut io::Stdout, input: &str| -> anyhow::Result<()> {
-        stdout
-            .queue(cursor::MoveToColumn(0))?
-            .queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
-        write!(stdout, "{}{}", prompt, input)?;
+    // ridisegna intero schermo (viewport) + riga input
+    let redraw = |stdout: &mut io::Stdout, messages: &Vec<String>, scroll_offset: usize, input: &str| -> anyhow::Result<()> {
+        let (cols, rows) = terminal::size()?;
+        let usable_rows = rows.saturating_sub(1); // ultima riga per input
+        // determina l'intervallo di messaggi da mostrare
+        let total = messages.len();
+        let end_index = total.saturating_sub(scroll_offset);
+        let start_index = end_index.saturating_sub(usable_rows as usize);
+        stdout.queue(terminal::Clear(terminal::ClearType::All))?;
+        stdout.queue(cursor::MoveTo(0,0))?;
+        for (i, line) in messages[start_index..end_index].iter().enumerate() {
+            let mut display = line.clone();
+            if display.len() > cols as usize { display.truncate(cols as usize); }
+            write!(stdout, "{}", display)?;
+            if (i as u16) < usable_rows.saturating_sub(1) { writeln!(stdout)?; }
+        }
+        // riga input
+        stdout.queue(cursor::MoveTo(0, rows.saturating_sub(1)))?;
+        stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
+        let mut inp = format!("{}{}", prompt, input);
+        if inp.len() > cols as usize { inp.truncate(cols as usize); }
+        write!(stdout, "{}", inp)?;
         stdout.flush()?;
         Ok(())
     };
-    redraw(&mut stdout, &input)?;
+    redraw(&mut stdout, &messages, scroll_offset, &input)?;
 
     // Event loop: multiplex tra input tasti e messaggi dal server
     loop {
         tokio::select! {
             maybe_msg = msg_rx.recv() => {
                 if let Some(txt) = maybe_msg {
-                    // Stampa messaggio su nuova linea, poi ridisegna input
-                    stdout.queue(cursor::MoveToColumn(0))?;
-                    stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
-                    writeln!(stdout, "{}", txt)?;
-                    redraw(&mut stdout, &input)?;
-                } else {
-                    // canale chiuso => server reader task terminato
+                    messages.push(txt);
+                    if scroll_offset == 0 { redraw(&mut stdout, &messages, scroll_offset, &input)?; }
                 }
             }
             // Gestione input da tastiera non bloccante
@@ -161,11 +176,10 @@ async fn main() -> anyhow::Result<()> {
                             // Consider only key presses (ignore repeats & releases)
                             if k.kind == KeyEventKind::Press {
                                 match k.code {
+                                    // Rimosso: lo scroll avviene solo con rotella mouse
                                     KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
-                                        // Simula /quit
-                                        stdout.queue(cursor::MoveToColumn(0))?;
-                                        stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
-                                        writeln!(stdout, "Uscita dal client...")?;
+                                        messages.push("Uscita dal client...".into());
+                                        redraw(&mut stdout, &messages, scroll_offset, &input)?;
                                         {
                                             let mut wh = writer_half.lock().await;
                                             let _ = send(&mut *wh, &ClientToServer::Logout { reason: Some("CTRL+C".into()) }).await;
@@ -174,28 +188,46 @@ async fn main() -> anyhow::Result<()> {
                                     }
                                     KeyCode::Enter => {
                                         let line = input.trim().to_string();
-                                        stdout.queue(cursor::MoveToColumn(0))?;
-                                        stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
                                         if !line.is_empty() {
-                                            // echo la riga inviata sopra i messaggi
-                                            writeln!(stdout, "> {}", line)?;
-                                            stdout.flush()?;
-                                            handle_command(&line, &writer_half, &my_nick).await?;
+                                            messages.push(format!("> {}", line));
+                                            let produced = handle_command(&line, &writer_half, &my_nick).await?;
+                                            if !produced.is_empty() { messages.extend(produced); }
                                         }
                                         input.clear();
-                                        redraw(&mut stdout, &input)?;
+                                        if scroll_offset == 0 { redraw(&mut stdout, &messages, scroll_offset, &input)?; }
                                     }
                                     KeyCode::Char(ch) => {
                                         input.push(ch);
-                                        redraw(&mut stdout, &input)?;
+                                        redraw(&mut stdout, &messages, scroll_offset, &input)?;
                                     }
-                                    KeyCode::Backspace => { input.pop(); redraw(&mut stdout, &input)?; }
-                                    KeyCode::Esc => { input.clear(); redraw(&mut stdout, &input)?; }
+                                    KeyCode::Backspace => { input.pop(); redraw(&mut stdout, &messages, scroll_offset, &input)?; }
+                                    KeyCode::Esc => { input.clear(); redraw(&mut stdout, &messages, scroll_offset, &input)?; }
                                     _ => {}
                                 }
                             }
                         }
-                        event::Event::Paste(p) => { input.push_str(&p); redraw(&mut stdout, &input)?; }
+                        event::Event::Paste(p) => { input.push_str(&p); redraw(&mut stdout, &messages, scroll_offset, &input)?; }
+                        event::Event::Mouse(m) => {
+                            use crossterm::event::MouseEventKind;
+                            match m.kind {
+                                MouseEventKind::ScrollUp => {
+                                    if messages.len() > 0 {
+                                        let max_off = messages.len().saturating_sub(1);
+                                        if scroll_offset < max_off {
+                                            scroll_offset += 1;
+                                            redraw(&mut stdout, &messages, scroll_offset, &input)?;
+                                        }
+                                    }
+                                }
+                                MouseEventKind::ScrollDown => {
+                                    if scroll_offset > 0 {
+                                        scroll_offset -= 1;
+                                        redraw(&mut stdout, &messages, scroll_offset, &input)?;
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -205,6 +237,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Ripristina terminale
     terminal::disable_raw_mode()?;
+    stdout.execute(crossterm::event::DisableMouseCapture)?;
     stdout.execute(terminal::LeaveAlternateScreen)?;
     println!("{} ti sei disconnesso correttamente", my_nick);
 
@@ -298,29 +331,25 @@ fn prompt_nick() -> anyhow::Result<String> {
 
 // Client: nessuna validazione rigida; il server applica le regole definitive
 // Funzione che gestisce i comandi e messaggi (estratta per riuso nel REPL raw-mode)
-async fn handle_command(line: &str, writer_half: &Arc<Mutex<OwnedWriteHalf>>, my_nick: &str) -> anyhow::Result<()> {
+async fn handle_command(line: &str, writer_half: &Arc<Mutex<OwnedWriteHalf>>, my_nick: &str) -> anyhow::Result<Vec<String>> {
+    let mut out = Vec::new();
     if line == "/help" || line == "/" {
-        println!("");
-        println!("============================= MENU COMANDI ================================");
-        println!("/help (o /)                  visualizza questo menu dettagliato");
-        println!("/create <name>               crea un nuovo gruppo con nome <name>");
-        println!("/invite <group> <nick>       invita l'utente <nick> nel gruppo <group>");
-        println!("/users                       mostra tutti gli utenti connessi");
-        println!("/groups                      mostra i gruppi di appartenenza");
-        println!("/msg <group> <text>          invia il messaggio <text> al gruppo <group>");
-        println!("/quit                        esci dal client");
-        println!("==========================================================================");
-        println!("");
-    } else if line == "/quit" { // comportati come CTRL+C: logout, reset terminale e exit
+        out.push(String::new());
+        out.push("============================= MENU COMANDI ================================".into());
+        out.push("/help (o /)                  visualizza questo menu dettagliato".into());
+        out.push("/create <name>               crea un nuovo gruppo con nome <name>".into());
+        out.push("/invite <group> <nick>       invita l'utente <nick> nel gruppo <group>".into());
+        out.push("/users                       mostra tutti gli utenti connessi".into());
+        out.push("/groups                      mostra i gruppi di appartenenza".into());
+        out.push("/msg <group> <text>          invia il messaggio <text> al gruppo <group>".into());
+        out.push("/quit                        esci dal client".into());
+        out.push("==========================================================================".into());
+        out.push(String::new());
+    } else if line == "/quit" {
         let mut wh = writer_half.lock().await;
         let _ = send(&mut *wh, &ClientToServer::Logout { reason: None }).await;
         let _ = wh.shutdown().await;
-        // ripristina terminale prima di uscire
-        let _ = crossterm::terminal::disable_raw_mode();
-        let mut stdout = io::stdout();
-    let _ = crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen);
-    println!("{} ti sei disconnesso correttamente", my_nick);
-        std::process::exit(0);
+        out.push(format!("{} ti sei disconnesso correttamente", my_nick));
     } else if let Some(rest) = line.strip_prefix("/create ") {
         let mut wh = writer_half.lock().await;
         let _ = send(&mut *wh, &ClientToServer::CreateGroup { group: rest.to_string() }).await;
@@ -329,16 +358,16 @@ async fn handle_command(line: &str, writer_half: &Arc<Mutex<OwnedWriteHalf>>, my
         if let (Some(group), Some(nick)) = (it.next(), it.next()) {
             let mut wh = writer_half.lock().await;
             let _ = send(&mut *wh, &ClientToServer::Invite { group: group.into(), nick: nick.into() }).await;
-        } else { eprintln!("uso: /invite <group> <nick>"); }
+        } else { out.push("uso: /invite <group> <nick>".into()); }
     } else if let Some(rest) = line.strip_prefix("/join ") {
         let mut it = rest.splitn(2, ' ');
         if let (Some(group), Some(code)) = (it.next(), it.next()) {
             let mut wh = writer_half.lock().await;
             let _ = send(&mut *wh, &ClientToServer::JoinGroup { group: group.into(), invite_code: code.into() }).await;
-        } else { eprintln!("uso: /join <group> <code>"); }
+        } else { out.push("uso: /join <group> <code>".into()); }
     } else if let Some(group) = line.strip_prefix("/leave ") {
         let group = group.trim();
-        if group.is_empty() { eprintln!("uso: /leave <group>"); }
+        if group.is_empty() { out.push("uso: /leave <group>".into()); }
         else {
             let mut wh = writer_half.lock().await;
             let _ = send(&mut *wh, &ClientToServer::LeaveGroup { group: group.into() }).await;
@@ -354,12 +383,12 @@ async fn handle_command(line: &str, writer_half: &Arc<Mutex<OwnedWriteHalf>>, my
         if let (Some(group), Some(text)) = (it.next(), it.next()) {
             let mut wh = writer_half.lock().await;
             let _ = send(&mut *wh, &ClientToServer::SendMessage { group: group.into(), text: text.into(), nick: my_nick.to_string() }).await;
-        } else { eprintln!("uso: /msg <group> <text>"); }
+        } else { out.push("uso: /msg <group> <text>".into()); }
     } else if line.starts_with('/') {
-        println!("[server] comando errato");
+        out.push("[server] comando errato".into());
     } else {
         let mut wh = writer_half.lock().await;
         let _ = send(&mut *wh, &ClientToServer::GlobalMessage { text: line.to_string() }).await;
     }
-    Ok(())
+    Ok(out)
 }
