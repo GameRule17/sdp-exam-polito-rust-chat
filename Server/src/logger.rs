@@ -13,6 +13,8 @@ pub async fn start_cpu_logger(log_path: &str) -> Result<()> {
     let mut sys = System::new_all();
 
     loop {
+        sleep(Duration::from_secs(120)).await;
+
         // Ottiene tutti i processi del sistema e ne aggiorna le informazioni
         sys.refresh_processes();
 
@@ -38,7 +40,5 @@ pub async fn start_cpu_logger(log_path: &str) -> Result<()> {
                 .open(log_path)?; // Apre il file in log_path passato come parametro
             file.write_all(log_line.as_bytes())?; // Scrittura dell'intero buffer
         }
-
-        sleep(Duration::from_secs(120)).await;
     }
 }
