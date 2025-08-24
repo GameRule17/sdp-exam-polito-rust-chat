@@ -28,9 +28,15 @@ pub async fn start_cpu_logger(log_path: &str) -> Result<()> {
             let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
             
             // Formatta la stringa da inserire come append nel file
+            // Formattiamo cpu_usage in larghezza fissa con 2 decimali e virgola come separatore
+            // es: " 300,00" o "   0,05" in modo che tutte le righe siano allineate
+            let cpu_str = format!("{:7.2}", cpu_usage).replace('.', ",");
+            // run_time (minuti) in larghezza fissa per tenere la colonna allineata
+            let run_time_str = format!("{:3}", run_time);
+
             let log_line = format!(
-                "[{}] CPU: {:.2}% | Run Time: {} min\n",
-                timestamp, cpu_usage, run_time
+                "[{}] CPU: {}% | Run Time: {} min\n",
+                timestamp, cpu_str, run_time_str
             );
             
             // Apertura file con le seguenti opzioni
