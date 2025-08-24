@@ -21,7 +21,7 @@ type Rx = mpsc::UnboundedReceiver<ServerToClient>;
 
 #[derive(Default)]
 struct Group {
-    members: HashSet<Uuid>, // client_ids
+    members: HashSet<Uuid>, // ID dei client
 }
 
 #[derive(Default)]
@@ -91,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
 
     loop {
         let (socket, _addr) = listener.accept().await?;
-        // address intentionally ignored to avoid noisy logs
+      
         let st = state.clone();
         tokio::spawn(async move {
             if let Err(e) = handle_conn(socket, st).await {
@@ -114,7 +114,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
             let line = match serde_json::to_string(&msg) {
                 Ok(s) => s,
                 Err(e) => {
-                    error!("Serialize error: {e}");
+                    error!("Errore di serializzazione: {e}");
                     continue;
                 }
             };
@@ -145,7 +145,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                     Err(e) => {
                         error!("Errore parsing messaggio: {}", e);
                         let _ = tx.send(ServerToClient::Error {
-                            reason: "Malformed JSON".into(),
+                            reason: "JSON errato".into(),
                         });
                         continue;
                     }
@@ -228,11 +228,6 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                             continue;
                         }
 
-                        if let Err(reason) = validate_group_name_syntax(&group) {
-                            let _ = tx.send(ServerToClient::Error { reason });
-                            continue;
-                        }
-
                         // Controllo case-insensitive per i gruppi
                         let maybe_existing_group = st
                             .groups
@@ -300,7 +295,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                         st.invites
                             .insert(code.clone(), (group.clone(), nick.clone()));
 
-                        // invia il codice di invito al client a cui faccio riferimento con il comanda \invite
+                        // invia il codice di invito al client a cui faccio riferimento con il comando /invite
                         if let Some(id) = id_user {
                             if let Some(txm) = st.clients.get(&id) {
                                 let _ = txm.send(ServerToClient::InviteCode {
@@ -410,7 +405,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                         let _ = tx.send(ServerToClient::Joined { group });
                     }
 
-                    // SendPvtMessage handling removed (DM feature deprecated)
+                   
                     ClientToServer::SendMessage { group, text, nick } => {
                         let st = state.read().await;
 
@@ -422,13 +417,13 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                                 .map_or(false, |g| g.members.contains(&sender_id))
                             {
                                 let _ = tx.send(ServerToClient::Error {
-                                    reason: format!("You are not a member of group {group}"),
+                                    reason: format!("Non sei membro di questo gruppo {group}"),
                                 });
                                 continue;
                             }
                         } else {
                             let _ = tx.send(ServerToClient::Error {
-                                reason: "Sender ID is invalid".into(),
+                                reason: "ID del mittente invalido".into(),
                             });
                             continue;
                         }
@@ -437,7 +432,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                             Some(id) => id,
                             None => {
                                 let _ = tx.send(ServerToClient::Error {
-                                    reason: "Client not registered".into(),
+                                    reason: "Non registrato".into(),
                                 });
                                 continue;
                             }
@@ -464,7 +459,7 @@ async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Re
                             }
                         } else {
                             let _ = tx.send(ServerToClient::Error {
-                                reason: format!("Group {group} does not exist"),
+                                reason: format!("Gruppo {group} inesistente"),
                             });
                         }
                     }

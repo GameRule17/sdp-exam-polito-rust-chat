@@ -261,7 +261,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-// ---------- Helpers ----------
+
 
 async fn send(writer: &mut OwnedWriteHalf, msg: &ClientToServer) -> anyhow::Result<()> {
     let data = serde_json::to_string(msg)? + "\n"; // NDJSON
