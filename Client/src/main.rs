@@ -151,39 +151,42 @@ async fn main() -> anyhow::Result<()> {
                 if event::poll(Duration::from_millis(30))? {
                     match event::read()? {
                         event::Event::Key(k) => {
-                            use crossterm::event::{KeyCode, KeyModifiers};
-                            match k.code {
-                                KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
-                                    // Simula /quit
-                                    stdout.queue(cursor::MoveToColumn(0))?;
-                                    stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
-                                    writeln!(stdout, "Uscita dal client...")?;
-                                    {
-                                        let mut wh = writer_half.lock().await;
-                                        let _ = send(&mut *wh, &ClientToServer::Logout { reason: Some("CTRL+C".into()) }).await;
+                            use crossterm::event::{KeyCode, KeyModifiers, KeyEventKind};
+                            // Consider only key presses (ignore repeats & releases)
+                            if k.kind == KeyEventKind::Press {
+                                match k.code {
+                                    KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                                        // Simula /quit
+                                        stdout.queue(cursor::MoveToColumn(0))?;
+                                        stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
+                                        writeln!(stdout, "Uscita dal client...")?;
+                                        {
+                                            let mut wh = writer_half.lock().await;
+                                            let _ = send(&mut *wh, &ClientToServer::Logout { reason: Some("CTRL+C".into()) }).await;
+                                        }
+                                        break;
                                     }
-                                    break;
-                                }
-                                KeyCode::Enter => {
-                                    let line = input.trim().to_string();
-                                    stdout.queue(cursor::MoveToColumn(0))?;
-                                    stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
-                                    if !line.is_empty() {
-                                        // echo la riga inviata sopra i messaggi
-                                        writeln!(stdout, "> {}", line)?;
-                                        stdout.flush()?;
-                                        handle_command(&line, &writer_half, &my_nick).await?;
+                                    KeyCode::Enter => {
+                                        let line = input.trim().to_string();
+                                        stdout.queue(cursor::MoveToColumn(0))?;
+                                        stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
+                                        if !line.is_empty() {
+                                            // echo la riga inviata sopra i messaggi
+                                            writeln!(stdout, "> {}", line)?;
+                                            stdout.flush()?;
+                                            handle_command(&line, &writer_half, &my_nick).await?;
+                                        }
+                                        input.clear();
+                                        redraw(&mut stdout, &input)?;
                                     }
-                                    input.clear();
-                                    redraw(&mut stdout, &input)?;
+                                    KeyCode::Char(ch) => {
+                                        input.push(ch);
+                                        redraw(&mut stdout, &input)?;
+                                    }
+                                    KeyCode::Backspace => { input.pop(); redraw(&mut stdout, &input)?; }
+                                    KeyCode::Esc => { input.clear(); redraw(&mut stdout, &input)?; }
+                                    _ => {}
                                 }
-                                KeyCode::Char(ch) => {
-                                    input.push(ch);
-                                    redraw(&mut stdout, &input)?;
-                                }
-                                KeyCode::Backspace => { input.pop(); redraw(&mut stdout, &input)?; }
-                                KeyCode::Esc => { input.clear(); redraw(&mut stdout, &input)?; }
-                                _ => {}
                             }
                         }
                         event::Event::Paste(p) => { input.push_str(&p); redraw(&mut stdout, &input)?; }
