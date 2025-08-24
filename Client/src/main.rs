@@ -36,16 +36,22 @@ async fn main() -> anyhow::Result<()> {
 
     // Stretta di mano con retry: prendi il lock async temporaneamente
     let mut wh = writer_half.lock().await;
-    let (_client_id, my_nick): (Uuid, String) =
+    let (_client_id, my_nick, handshake_msgs): (Uuid, String, Vec<String>) =
         register_handshake(&args, &mut *wh, &mut reader_lines).await?;
     drop(wh);
 
     // --- Set up asynchronous input with crossterm for proper line redraw ---
-    use crossterm::{cursor, event, terminal, ExecutableCommand, QueueableCommand};
+    use crossterm::{cursor, event, terminal, QueueableCommand};
+    use crossterm::ExecutableCommand;
     use std::time::Duration;
 
     // We keep a channel to forward server messages to the UI printer so we can redraw properly.
     let (msg_tx, mut msg_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+
+    // Inoltra qui i messaggi generati durante la handshake (non stampati direttamente prima)
+    for m in handshake_msgs {
+        let _ = msg_tx.send(m);
+    }
 
     // Task che legge dal server e invia testo formattato sul canale
     let mut reader_for_task = reader_lines;
@@ -121,7 +127,7 @@ async fn main() -> anyhow::Result<()> {
     let mut input = String::new();
 
     // Funzione locale per ridisegnare la riga corrente
-    let mut redraw = |stdout: &mut io::Stdout, input: &str| -> anyhow::Result<()> {
+    let redraw = |stdout: &mut io::Stdout, input: &str| -> anyhow::Result<()> {
         stdout
             .queue(cursor::MoveToColumn(0))?
             .queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
@@ -200,7 +206,7 @@ async fn main() -> anyhow::Result<()> {
     // Ripristina terminale
     terminal::disable_raw_mode()?;
     stdout.execute(terminal::LeaveAlternateScreen)?;
-    println!("Bye");
+    println!("{} ti sei disconnesso correttamente", my_nick);
 
     read_task.abort();
     Ok(())
@@ -219,7 +225,7 @@ async fn register_handshake(
     args: &Args,
     writer: &mut OwnedWriteHalf,
     reader: &mut Lines<BufReader<OwnedReadHalf>>,
-) -> anyhow::Result<(Uuid, String)> {
+) -> anyhow::Result<(Uuid, String, Vec<String>)> {
     loop {
         let nick: String = match &args.nick {
             Some(n) => n.trim().to_string(),
@@ -245,19 +251,20 @@ async fn register_handshake(
         match serde_json::from_str::<ServerToClient>(&line) {
             Ok(ServerToClient::Registered { ok, reason }) => {
                 if ok {
-                    println!("[server] utente {} loggato correttamente", nick);
-                    println!("[server] Per visualizzare il menu invia '/' ");
-                    return Ok((client_id, nick));
+                    // Non stampiamo qui: ritorniamo i messaggi a main che li inoltra all'UI
+                    let mut msgs = Vec::new();
+                    msgs.push(format!("[server] utente {} loggato correttamente", nick));
+                    msgs.push("[server] Per visualizzare il menu invia '/' ".to_string());
+                    return Ok((client_id, nick, msgs));
                 } else {
                     eprintln!(
                         "[server] Registrazione rifiutata: {}",
                         reason.unwrap_or_else(|| "motivo sconosciuto".into())
                     );
-                    // Se --nick era passato ed è rifiutato, si prosegue chiedendo un nuovo nick
                 }
             }
             Ok(other) => {
-                println!(
+                eprintln!(
                     "[server] risposta inattesa durante la registrazione: {:?}",
                     other
                 );
@@ -267,12 +274,8 @@ async fn register_handshake(
             }
         }
 
-        // Reset: se era passato --nick ed è stato rifiutato, da qui in poi si chiederà interattivamente
-        // (basta lasciare il loop ripartire: la prossima iterazione leggerà da prompt_nick())
         if args.nick.is_some() {
-            // piccolo trucco: svuota il campo nick per i retry
-            // (non puoi mutare `args`, quindi il match sopra continuerà a usare Some(...);
-            //  per semplicità, chiedi sempre dal prompt quando arrivi qui)
+            // se --nick era passato ma rifiutato, la prossima iterazione chiederà interattivamente
         }
     }
 }
@@ -301,18 +304,22 @@ async fn handle_command(line: &str, writer_half: &Arc<Mutex<OwnedWriteHalf>>, my
         println!("==================== MENU COMANDI ====================");
         println!("/help (o /)                 visualizza questo menu dettagliato");
         println!("/create <name>               crea un nuovo gruppo con nome <name>");
-        println!("/invite <group> <nick>       invita l'utente <nick> nel gruppo <group>");
-        println!("/join <group> <code>         entra nel gruppo <group> usando il codice <code>");
-        println!("/leave <group>               esci dal gruppo <group>");
-        println!("/groups                      mostra tutti i gruppi di cui fai parte");
-        println!("/users                       mostra tutti gli utenti connessi");
+    println!("/invite <group> <nick>       invita l'utente <nick> nel gruppo <group>");
+    println!("/users                       mostra tutti gli utenti connessi");
         println!("/msg <group> <text>          invia il messaggio <text> al gruppo <group>");
         println!("/quit                        esci dal client");
         println!("======================================================");
         println!("");
-    } else if line == "/quit" { // handled outside normally, fallback
+    } else if line == "/quit" { // comportati come CTRL+C: logout, reset terminale e exit
         let mut wh = writer_half.lock().await;
         let _ = send(&mut *wh, &ClientToServer::Logout { reason: None }).await;
+        let _ = wh.shutdown().await;
+        // ripristina terminale prima di uscire
+        let _ = crossterm::terminal::disable_raw_mode();
+        let mut stdout = io::stdout();
+    let _ = crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen);
+    println!("{} ti sei disconnesso correttamente", my_nick);
+        std::process::exit(0);
     } else if let Some(rest) = line.strip_prefix("/create ") {
         let mut wh = writer_half.lock().await;
         let _ = send(&mut *wh, &ClientToServer::CreateGroup { group: rest.to_string() }).await;
