@@ -301,14 +301,15 @@ fn prompt_nick() -> anyhow::Result<String> {
 async fn handle_command(line: &str, writer_half: &Arc<Mutex<OwnedWriteHalf>>, my_nick: &str) -> anyhow::Result<()> {
     if line == "/help" || line == "/" {
         println!("");
-        println!("==================== MENU COMANDI ====================");
-        println!("/help (o /)                 visualizza questo menu dettagliato");
+        println!("============================= MENU COMANDI ================================");
+        println!("/help (o /)                  visualizza questo menu dettagliato");
         println!("/create <name>               crea un nuovo gruppo con nome <name>");
-    println!("/invite <group> <nick>       invita l'utente <nick> nel gruppo <group>");
-    println!("/users                       mostra tutti gli utenti connessi");
+        println!("/invite <group> <nick>       invita l'utente <nick> nel gruppo <group>");
+        println!("/users                       mostra tutti gli utenti connessi");
+        println!("/groups                      mostra i gruppi di appartenenza");
         println!("/msg <group> <text>          invia il messaggio <text> al gruppo <group>");
         println!("/quit                        esci dal client");
-        println!("======================================================");
+        println!("==========================================================================");
         println!("");
     } else if line == "/quit" { // comportati come CTRL+C: logout, reset terminale e exit
         let mut wh = writer_half.lock().await;
