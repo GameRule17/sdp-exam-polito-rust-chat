@@ -40,49 +40,54 @@ async fn main() -> anyhow::Result<()> {
         register_handshake(&args, &mut *wh, &mut reader_lines).await?;
     drop(wh);
 
-    // Task che legge dal server
+    // --- Set up asynchronous input with crossterm for proper line redraw ---
+    use crossterm::{cursor, event, terminal, ExecutableCommand, QueueableCommand};
+    use std::time::Duration;
+
+    // We keep a channel to forward server messages to the UI printer so we can redraw properly.
+    let (msg_tx, mut msg_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+
+    // Task che legge dal server e invia testo formattato sul canale
     let mut reader_for_task = reader_lines;
     let read_task = tokio::spawn(async move {
         while let Ok(Some(line)) = reader_for_task.next_line().await {
             if let Ok(msg) = serde_json::from_str::<ServerToClient>(&line) {
-                match msg {
+                let rendered = match msg {
                     ServerToClient::Registered { ok, reason } => {
-                        println!("[server] registrazione: ok={} {:?}", ok, reason)
+                        format!("[server] registrazione: ok={} {:?}", ok, reason)
                     }
-                    ServerToClient::InviteCode {
-                        group,
-                        code,
-                        client_id,
-                    } => println!(
+                    ServerToClient::InviteCode { group, code, client_id } => format!(
                         "[server] codice invito per il gruppo '{}': {} da {}",
                         group, code, client_id
                     ),
-                    ServerToClient::InviteCodeForMe { group, code } => {
-                        println!("[server] codice invito per il gruppo '{}': {}", group, code)
-                    }
+                    ServerToClient::InviteCodeForMe { group, code } => format!(
+                        "[server] codice invito per il gruppo '{}': {}",
+                        group, code
+                    ),
                     ServerToClient::Joined { group } => {
-                        println!("[server] sei entrato nel gruppo '{}'", group)
+                        format!("[server] sei entrato nel gruppo '{}'", group)
                     }
                     ServerToClient::Left { group } => {
-                        println!("[server] sei uscito dal gruppo '{}'", group)
+                        format!("[server] sei uscito dal gruppo '{}'", group)
                     }
                     ServerToClient::Message { group, from, text } => {
-                        println!("[{}] <{}> {}", group, from, text)
+                        format!("[{}] <{}> {}", group, from, text)
                     }
-                    ServerToClient::MessageServer { text } => println!("[server] {}", text),
+                    ServerToClient::MessageServer { text } => format!("[server] {}", text),
                     ServerToClient::Groups { groups } => {
-                        println!("Gruppi di appartenenza: {:?}", groups)
+                        format!("Gruppi di appartenenza: {:?}", groups)
                     }
-                    ServerToClient::ListUsers { users } => println!("Users: {:?}", users),
-                    ServerToClient::Error { reason } => eprintln!("[server] {}", reason),
-                    ServerToClient::Pong => println!("[server] pong"),
+                    ServerToClient::ListUsers { users } => format!("Users: {:?}", users),
+                    ServerToClient::Error { reason } => format!("[server] {}", reason),
+                    ServerToClient::Pong => "[server] pong".to_string(),
                     ServerToClient::GlobalMessage { from, text } => {
-                        println!("[globale] <{}> {}", from, text)
+                        format!("[globale] <{}> {}", from, text)
                     }
                     ServerToClient::GroupCreated { group } => {
-                        println!("[server] gruppo '{}' creato correttamente!", group)
+                        format!("[server] gruppo '{}' creato correttamente!", group)
                     }
-                }
+                };
+                let _ = msg_tx.send(rendered);
             }
         }
     });
@@ -106,156 +111,93 @@ async fn main() -> anyhow::Result<()> {
         std::process::exit(0);
     });
 
-    // REPL
+    // REPL con gestione manuale della riga di input
+    // Entriamo in raw mode per gestire tasti singolarmente
+    let mut stdout = io::stdout();
+    terminal::enable_raw_mode()?;
+    stdout.execute(terminal::EnterAlternateScreen)?;
+    // semplice prompt persistente
+    let prompt = "> ";
+    let mut input = String::new();
 
-    let mut stdin_reader = BufReader::new(tokio::io::stdin());
-    let mut buf = String::new();
+    // Funzione locale per ridisegnare la riga corrente
+    let mut redraw = |stdout: &mut io::Stdout, input: &str| -> anyhow::Result<()> {
+        stdout
+            .queue(cursor::MoveToColumn(0))?
+            .queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
+        write!(stdout, "{}{}", prompt, input)?;
+        stdout.flush()?;
+        Ok(())
+    };
+    redraw(&mut stdout, &input)?;
 
+    // Event loop: multiplex tra input tasti e messaggi dal server
     loop {
-        buf.clear();
-        let n = tokio::io::AsyncBufReadExt::read_line(&mut stdin_reader, &mut buf).await?;
-        if n == 0 {
-            break;
-        }
-
-        let line = buf.trim().to_string();
-        if line.is_empty() {
-            continue;
-        }
-
-        if line == "/help" || line == "/" {
-            println!("");
-            println!("==================== MENU COMANDI ====================");
-            println!("/help (o /)                 visualizza questo menu dettagliato");
-            println!("/create <name>               crea un nuovo gruppo con nome <name>");
-            println!("/invite <group> <nick>       invita l'utente <nick> nel gruppo <group>");
-            println!(
-                "/join <group> <code>         entra nel gruppo <group> usando il codice <code>"
-            );
-            println!("/leave <group>               esci dal gruppo <group>");
-            println!("/groups                      mostra tutti i gruppi di cui fai parte");
-            println!("/users                       mostra tutti gli utenti connessi");
-            println!("/msg <group> <text>          invia il messaggio <text> al gruppo <group>");
-            println!("/quit                        esci dal client");
-            println!("======================================================");
-            println!("");
-            continue;
-        } else if line == "/quit" {
-            println!("Uscita dal client...");
-            {
-                let mut wh = writer_half.lock().await;
-                let _ = send(&mut *wh, &ClientToServer::Logout { reason: None }).await;
-            }
-            break;
-        } else if let Some(rest) = line.strip_prefix("/create ") {
-            {
-                let mut wh = writer_half.lock().await;
-                let _ = send(
-                    &mut *wh,
-                    &ClientToServer::CreateGroup {
-                        group: rest.to_string(),
-                    },
-                )
-                .await;
-            }
-            continue;
-        } else if let Some(rest) = line.strip_prefix("/invite ") {
-            let mut it = rest.splitn(2, ' ');
-            if let (Some(group), Some(nick)) = (it.next(), it.next()) {
-                {
-                    let mut wh = writer_half.lock().await;
-                    let _ = send(
-                        &mut *wh,
-                        &ClientToServer::Invite {
-                            group: group.into(),
-                            nick: nick.into(),
-                        },
-                    )
-                    .await;
+        tokio::select! {
+            maybe_msg = msg_rx.recv() => {
+                if let Some(txt) = maybe_msg {
+                    // Stampa messaggio su nuova linea, poi ridisegna input
+                    stdout.queue(cursor::MoveToColumn(0))?;
+                    stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
+                    writeln!(stdout, "{}", txt)?;
+                    redraw(&mut stdout, &input)?;
+                } else {
+                    // canale chiuso => server reader task terminato
                 }
-            } else {
-                eprintln!("uso: /invite <group> <nick>");
             }
-            continue;
-        }
-        // /dm command removed
-        else if let Some(rest) = line.strip_prefix("/join ") {
-            let mut it = rest.splitn(2, ' ');
-            if let (Some(group), Some(code)) = (it.next(), it.next()) {
-                {
-                    let mut wh = writer_half.lock().await;
-                    let _ = send(
-                        &mut *wh,
-                        &ClientToServer::JoinGroup {
-                            group: group.into(),
-                            invite_code: code.into(),
-                        },
-                    )
-                    .await;
+            // Gestione input da tastiera non bloccante
+            _ = tokio::task::yield_now() => {
+                // Poll crossterm events con timeout breve
+                if event::poll(Duration::from_millis(30))? {
+                    match event::read()? {
+                        event::Event::Key(k) => {
+                            use crossterm::event::{KeyCode, KeyModifiers};
+                            match k.code {
+                                KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                                    // Simula /quit
+                                    stdout.queue(cursor::MoveToColumn(0))?;
+                                    stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
+                                    writeln!(stdout, "Uscita dal client...")?;
+                                    {
+                                        let mut wh = writer_half.lock().await;
+                                        let _ = send(&mut *wh, &ClientToServer::Logout { reason: Some("CTRL+C".into()) }).await;
+                                    }
+                                    break;
+                                }
+                                KeyCode::Enter => {
+                                    let line = input.trim().to_string();
+                                    stdout.queue(cursor::MoveToColumn(0))?;
+                                    stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
+                                    if !line.is_empty() {
+                                        // echo la riga inviata sopra i messaggi
+                                        writeln!(stdout, "> {}", line)?;
+                                        stdout.flush()?;
+                                        handle_command(&line, &writer_half, &my_nick).await?;
+                                    }
+                                    input.clear();
+                                    redraw(&mut stdout, &input)?;
+                                }
+                                KeyCode::Char(ch) => {
+                                    input.push(ch);
+                                    redraw(&mut stdout, &input)?;
+                                }
+                                KeyCode::Backspace => { input.pop(); redraw(&mut stdout, &input)?; }
+                                KeyCode::Esc => { input.clear(); redraw(&mut stdout, &input)?; }
+                                _ => {}
+                            }
+                        }
+                        event::Event::Paste(p) => { input.push_str(&p); redraw(&mut stdout, &input)?; }
+                        _ => {}
+                    }
                 }
-            } else {
-                eprintln!("uso: /join <group> <code>");
-            }
-            continue;
-        } else if let Some(group) = line.strip_prefix("/leave ") {
-            let group = group.trim();
-            if group.is_empty() {
-                eprintln!("uso: /leave <group>");
-            } else {
-                let mut wh = writer_half.lock().await;
-                let _ = send(
-                    &mut *wh,
-                    &ClientToServer::LeaveGroup {
-                        group: group.into(),
-                    },
-                )
-                .await;
-            }
-            continue;
-        } else if line == "/users" {
-            {
-                let mut wh = writer_half.lock().await;
-                let _ = send(&mut *wh, &ClientToServer::ListUsers).await;
-            }
-            continue;
-        } else if line == "/groups" {
-            {
-                let mut wh = writer_half.lock().await;
-                let _ = send(&mut *wh, &ClientToServer::ListGroups).await;
-            }
-            continue;
-        } else if let Some(rest) = line.strip_prefix("/msg ") {
-            let mut it = rest.splitn(2, ' ');
-            if let (Some(group), Some(text)) = (it.next(), it.next()) {
-                {
-                    let mut wh = writer_half.lock().await;
-                    let _ = send(
-                        &mut *wh,
-                        &ClientToServer::SendMessage {
-                            group: group.into(),
-                            text: text.into(),
-                            nick: my_nick.clone(),
-                        },
-                    )
-                    .await;
-                }
-            } else {
-                eprintln!("uso: /msg <group> <text>");
-            }
-            continue;
-        } else if line.starts_with('/') {
-            println!("[server] comando errato");
-        } else {
-            {
-                let mut wh = writer_half.lock().await;
-                let _ = send(
-                    &mut *wh,
-                    &ClientToServer::GlobalMessage { text: line.clone() },
-                )
-                .await;
             }
         }
     }
+
+    // Ripristina terminale
+    terminal::disable_raw_mode()?;
+    stdout.execute(terminal::LeaveAlternateScreen)?;
+    println!("Bye");
 
     read_task.abort();
     Ok(())
@@ -349,3 +291,64 @@ fn prompt_nick() -> anyhow::Result<String> {
 }
 
 // Client: nessuna validazione rigida; il server applica le regole definitive
+// Funzione che gestisce i comandi e messaggi (estratta per riuso nel REPL raw-mode)
+async fn handle_command(line: &str, writer_half: &Arc<Mutex<OwnedWriteHalf>>, my_nick: &str) -> anyhow::Result<()> {
+    if line == "/help" || line == "/" {
+        println!("");
+        println!("==================== MENU COMANDI ====================");
+        println!("/help (o /)                 visualizza questo menu dettagliato");
+        println!("/create <name>               crea un nuovo gruppo con nome <name>");
+        println!("/invite <group> <nick>       invita l'utente <nick> nel gruppo <group>");
+        println!("/join <group> <code>         entra nel gruppo <group> usando il codice <code>");
+        println!("/leave <group>               esci dal gruppo <group>");
+        println!("/groups                      mostra tutti i gruppi di cui fai parte");
+        println!("/users                       mostra tutti gli utenti connessi");
+        println!("/msg <group> <text>          invia il messaggio <text> al gruppo <group>");
+        println!("/quit                        esci dal client");
+        println!("======================================================");
+        println!("");
+    } else if line == "/quit" { // handled outside normally, fallback
+        let mut wh = writer_half.lock().await;
+        let _ = send(&mut *wh, &ClientToServer::Logout { reason: None }).await;
+    } else if let Some(rest) = line.strip_prefix("/create ") {
+        let mut wh = writer_half.lock().await;
+        let _ = send(&mut *wh, &ClientToServer::CreateGroup { group: rest.to_string() }).await;
+    } else if let Some(rest) = line.strip_prefix("/invite ") {
+        let mut it = rest.splitn(2, ' ');
+        if let (Some(group), Some(nick)) = (it.next(), it.next()) {
+            let mut wh = writer_half.lock().await;
+            let _ = send(&mut *wh, &ClientToServer::Invite { group: group.into(), nick: nick.into() }).await;
+        } else { eprintln!("uso: /invite <group> <nick>"); }
+    } else if let Some(rest) = line.strip_prefix("/join ") {
+        let mut it = rest.splitn(2, ' ');
+        if let (Some(group), Some(code)) = (it.next(), it.next()) {
+            let mut wh = writer_half.lock().await;
+            let _ = send(&mut *wh, &ClientToServer::JoinGroup { group: group.into(), invite_code: code.into() }).await;
+        } else { eprintln!("uso: /join <group> <code>"); }
+    } else if let Some(group) = line.strip_prefix("/leave ") {
+        let group = group.trim();
+        if group.is_empty() { eprintln!("uso: /leave <group>"); }
+        else {
+            let mut wh = writer_half.lock().await;
+            let _ = send(&mut *wh, &ClientToServer::LeaveGroup { group: group.into() }).await;
+        }
+    } else if line == "/users" {
+        let mut wh = writer_half.lock().await;
+        let _ = send(&mut *wh, &ClientToServer::ListUsers).await;
+    } else if line == "/groups" {
+        let mut wh = writer_half.lock().await;
+        let _ = send(&mut *wh, &ClientToServer::ListGroups).await;
+    } else if let Some(rest) = line.strip_prefix("/msg ") {
+        let mut it = rest.splitn(2, ' ');
+        if let (Some(group), Some(text)) = (it.next(), it.next()) {
+            let mut wh = writer_half.lock().await;
+            let _ = send(&mut *wh, &ClientToServer::SendMessage { group: group.into(), text: text.into(), nick: my_nick.to_string() }).await;
+        } else { eprintln!("uso: /msg <group> <text>"); }
+    } else if line.starts_with('/') {
+        println!("[server] comando errato");
+    } else {
+        let mut wh = writer_half.lock().await;
+        let _ = send(&mut *wh, &ClientToServer::GlobalMessage { text: line.to_string() }).await;
+    }
+    Ok(())
+}
