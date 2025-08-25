@@ -10,6 +10,7 @@ use tokio::{
     net::TcpStream,
 };
 use uuid::Uuid;
+//versione funzionante , mancano i colori per tutti i messaggi lato server
 
 fn restore_terminal() {
     let _ = crossterm::terminal::disable_raw_mode();
