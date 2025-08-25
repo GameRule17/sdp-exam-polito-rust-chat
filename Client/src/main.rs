@@ -125,7 +125,7 @@ async fn main() -> anyhow::Result<()> {
     // Abilita cattura eventi mouse per lo scroll
     stdout.execute(crossterm::event::EnableMouseCapture)?;
     // Nascondi il cursore e disabilita l'auto-wrap per evitare residui
-    stdout.execute(cursor::Hide)?;
+    stdout.execute(cursor::Show)?;
     write!(stdout, "\x1b[?7l")?; // DECAWM off (disable line wrap)
     stdout.flush()?;
     // semplice prompt persistente
@@ -176,6 +176,8 @@ async fn main() -> anyhow::Result<()> {
         let mut inp = format!("{}{}", prompt, input);
         if inp.len() > cols as usize { inp.truncate(cols as usize); }
         write!(stdout, "{}", inp)?;
+        // Assicurati che il cursore sia visibile e posizionato alla fine della riga di input
+        stdout.queue(cursor::Show)?;
         stdout.flush()?;
         Ok(())
     };
