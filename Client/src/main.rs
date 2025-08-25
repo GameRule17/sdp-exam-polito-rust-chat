@@ -11,6 +11,18 @@ use tokio::{
 };
 use uuid::Uuid;
 
+fn restore_terminal() {
+    let _ = crossterm::terminal::disable_raw_mode();
+    let mut stdout = std::io::stdout();
+    let _ = crossterm::execute!(stdout,
+        crossterm::event::DisableMouseCapture,
+        crossterm::cursor::Show,
+        crossterm::terminal::LeaveAlternateScreen
+    );
+    let _ = write!(stdout, "\x1b[?7h"); // riabilita wrapping delle righe
+    let _ = stdout.flush();
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "ruggine-client")]
 struct Args {
@@ -26,16 +38,10 @@ struct Args {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Imposta un panic hook globale per ripristinare il terminale in caso di panic
-    std::panic::set_hook(Box::new(|info| {
-        let _ = crossterm::terminal::disable_raw_mode();
-        let mut stdout = std::io::stdout();
-        let _ = crossterm::execute!(stdout,
-            crossterm::cursor::Show,
-            crossterm::terminal::LeaveAlternateScreen,
-            crossterm::event::DisableMouseCapture
-        );
-        eprintln!("PANICO: {}", info);
-    }));
+        std::panic::set_hook(Box::new(|info| {
+            restore_terminal();
+            eprintln!("PANICO: {}", info);
+        }));
     tracing_subscriber::fmt().with_env_filter("info").init();
 
     let args = Args::parse();
@@ -116,16 +122,11 @@ async fn main() -> anyhow::Result<()> {
         let _ = tokio::signal::ctrl_c().await;
         let mut wh = writer_half_ctrlc.lock().await;
         // invia logout e poi chiudi la metà di scrittura per assicurare il flush
-        let _ = send(
-            &mut *wh,
-            &ClientToServer::Logout {
-                reason: Some("CTRL+C".to_string()),
-            },
-        )
-        .await;
+        let _ = send(&mut *wh, &ClientToServer::Logout { reason: Some("CTRL+C".to_string()) }).await;
         // prova a chiudere/flushare la scrittura e attendi un breve intervallo
         let _ = wh.shutdown().await;
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        restore_terminal();
         std::process::exit(0);
     });
 
@@ -303,7 +304,11 @@ async fn register_handshake(
     loop {
         let nick: String = match &args.nick {
             Some(n) => n.trim().to_string(),
-            None => prompt_nick()?,
+            None => {
+                // Disabilita la raw mode prima di chiedere il nick
+                let _ = crossterm::terminal::disable_raw_mode();
+                prompt_nick()?
+            },
         };
 
         let client_id = Uuid::new_v4();
@@ -394,13 +399,7 @@ async fn handle_command(line: &str, writer_half: &Arc<Mutex<OwnedWriteHalf>>, my
         let _ = wh.shutdown().await;
 
         // ripristina stato terminale prima di uscire
-        let _ = crossterm::terminal::disable_raw_mode();
-        let mut stdout = io::stdout();
-        let _ = crossterm::execute!(stdout, crossterm::event::DisableMouseCapture);
-        let _ = crossterm::execute!(stdout, crossterm::cursor::Show);
-        let _ = write!(stdout, "\x1b[?7h"); // riabilita wrapping delle righe
-        let _ = crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen);
-        let _ = stdout.flush();
+        restore_terminal();
 
         println!("{} ti sei disconnesso correttamente", my_nick);
         std::process::exit(0);
