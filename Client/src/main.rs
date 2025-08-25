@@ -1,3 +1,4 @@
+use crossterm::QueueableCommand; // necessario per il metodo queue su Stdout
 use clap::Parser;
 use ruggine_common::{ClientToServer, ServerToClient};
 use std::io::{self, Write};
@@ -24,6 +25,17 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Imposta un panic hook globale per ripristinare il terminale in caso di panic
+    std::panic::set_hook(Box::new(|info| {
+        let _ = crossterm::terminal::disable_raw_mode();
+        let mut stdout = std::io::stdout();
+        let _ = crossterm::execute!(stdout,
+            crossterm::cursor::Show,
+            crossterm::terminal::LeaveAlternateScreen,
+            crossterm::event::DisableMouseCapture
+        );
+        eprintln!("PANICO: {}", info);
+    }));
     tracing_subscriber::fmt().with_env_filter("info").init();
 
     let args = Args::parse();
@@ -40,12 +52,12 @@ async fn main() -> anyhow::Result<()> {
         register_handshake(&args, &mut *wh, &mut reader_lines).await?;
     drop(wh);
 
-    // --- Set up asynchronous input with crossterm for proper line redraw ---
-    use crossterm::{cursor, event, terminal, QueueableCommand};
+    // Configuriamo l'input asincrono con crossterm per ridisegnare correttamente la riga e la UI
+    use crossterm::{cursor, event, terminal};
     use crossterm::ExecutableCommand;
     use std::time::Duration;
 
-    // We keep a channel to forward server messages to the UI printer so we can redraw properly.
+    // Manteniamo un canale per inoltrare i messaggi del server all'interfaccia utente in modo da poter ridisegnare correttamente.
     let (msg_tx, mut msg_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
 
     // Inoltra qui i messaggi generati durante la handshake (non stampati direttamente prima)
@@ -124,9 +136,9 @@ async fn main() -> anyhow::Result<()> {
     stdout.execute(terminal::EnterAlternateScreen)?;
     // Abilita cattura eventi mouse per lo scroll
     stdout.execute(crossterm::event::EnableMouseCapture)?;
-    // Nascondi il cursore e disabilita l'auto-wrap per evitare residui
+    // Mostra il cursore e disabilita l'auto-wrap per evitare residui a video
     stdout.execute(cursor::Show)?;
-    write!(stdout, "\x1b[?7l")?; // DECAWM off (disable line wrap)
+    write!(stdout, "\x1b[?7l")?; // DECAWM off (disabilita il wrapping delle righe)
     stdout.flush()?;
     // semplice prompt persistente
     let prompt = "> ";
@@ -136,7 +148,7 @@ async fn main() -> anyhow::Result<()> {
 
     // ridisegna intero schermo (viewport) + riga input
     let redraw = |stdout: &mut io::Stdout, messages: &Vec<String>, scroll_offset: usize, input: &str| -> anyhow::Result<()> {
-        use crossterm::{cursor, terminal, QueueableCommand};
+    use crossterm::{cursor, terminal};
         let (cols, rows) = terminal::size()?;
         let usable_rows = rows.saturating_sub(1); // ultima riga per input
         // determina l'intervallo di messaggi da mostrare
@@ -199,7 +211,7 @@ async fn main() -> anyhow::Result<()> {
                     match event::read()? {
                         event::Event::Key(k) => {
                             use crossterm::event::{KeyCode, KeyModifiers, KeyEventKind};
-                            // Consider only key presses (ignore repeats & releases)
+                            // Considera solo pressioni di tasti (ignora ripetizioni e rilasci)
                             if k.kind == KeyEventKind::Press {
                                 match k.code {
                                     // Rimosso: lo scroll avviene solo con rotella mouse
@@ -265,7 +277,7 @@ async fn main() -> anyhow::Result<()> {
     terminal::disable_raw_mode()?;
     stdout.execute(crossterm::event::DisableMouseCapture)?;
     stdout.execute(cursor::Show)?;            // mostra di nuovo il cursore
-    write!(stdout, "\x1b[?7h")?;             // DECAWM on (re-enable line wrap)
+    write!(stdout, "\x1b[?7h")?;             // DECAWM on (riattiva il wrapping delle righe)
     stdout.execute(terminal::LeaveAlternateScreen)?;
     stdout.flush()?;
     println!("{} ti sei disconnesso correttamente", my_nick);
@@ -376,10 +388,22 @@ async fn handle_command(line: &str, writer_half: &Arc<Mutex<OwnedWriteHalf>>, my
         out.push("==========================================================================".into());
         out.push(String::new());
     } else if line == "/quit" {
+        // comportati come CTRL+C: invia logout, ripristina il terminale e esci al shell
         let mut wh = writer_half.lock().await;
         let _ = send(&mut *wh, &ClientToServer::Logout { reason: None }).await;
         let _ = wh.shutdown().await;
-        out.push(format!("{} ti sei disconnesso correttamente", my_nick));
+
+        // ripristina stato terminale prima di uscire
+        let _ = crossterm::terminal::disable_raw_mode();
+        let mut stdout = io::stdout();
+        let _ = crossterm::execute!(stdout, crossterm::event::DisableMouseCapture);
+        let _ = crossterm::execute!(stdout, crossterm::cursor::Show);
+        let _ = write!(stdout, "\x1b[?7h"); // riabilita wrapping delle righe
+        let _ = crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen);
+        let _ = stdout.flush();
+
+        println!("{} ti sei disconnesso correttamente", my_nick);
+        std::process::exit(0);
     } else if let Some(rest) = line.strip_prefix("/create ") {
         let mut wh = writer_half.lock().await;
         let _ = send(&mut *wh, &ClientToServer::CreateGroup { group: rest.to_string() }).await;

@@ -10,7 +10,6 @@ pub enum ClientToServer {
     JoinGroup { group: String, invite_code: String },
     LeaveGroup { group: String },
     SendMessage { group: String, text: String, nick: String },
-    // SendPvtMessage removed (DM feature deprecated)
     GlobalMessage { text: String },
     ListGroups,
     ListUsers,
@@ -30,7 +29,6 @@ pub enum ServerToClient {
     Message { group: String, from: String, text: String },
     MessageServer { text: String },
     GlobalMessage { from: String, text: String },
-    // SendPvtMessage removed (DM feature deprecated)
     Groups { groups: Vec<String> },
     Error { reason: String },
     Pong,
