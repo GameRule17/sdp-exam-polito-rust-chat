@@ -58,41 +58,41 @@ async fn main() -> anyhow::Result<()> {
     let read_task = tokio::spawn(async move {
         while let Ok(Some(line)) = reader_for_task.next_line().await {
             if let Ok(msg) = serde_json::from_str::<ServerToClient>(&line) {
-                let rendered = match msg {
-                    ServerToClient::Registered { ok, reason } => {
-                        format!("[server] registrazione: ok={} {:?}", ok, reason)
-                    }
-                    ServerToClient::InviteCode { group, code, client_id } => format!(
-                        "[server] codice invito per il gruppo '{}': {} da {}",
-                        group, code, client_id
-                    ),
-                    ServerToClient::InviteCodeForMe { group, code } => format!(
-                        "[server] codice invito per il gruppo '{}': {}",
-                        group, code
-                    ),
-                    ServerToClient::Joined { group } => {
-                        format!("[server] sei entrato nel gruppo '{}'", group)
-                    }
-                    ServerToClient::Left { group } => {
-                        format!("[server] sei uscito dal gruppo '{}'", group)
-                    }
-                    ServerToClient::Message { group, from, text } => {
-                        format!("[{}] <{}> {}", group, from, text)
-                    }
-                    ServerToClient::MessageServer { text } => format!("[server] {}", text),
-                    ServerToClient::Groups { groups } => {
-                        format!("Gruppi di appartenenza: {:?}", groups)
-                    }
-                    ServerToClient::ListUsers { users } => format!("Users: {:?}", users),
-                    ServerToClient::Error { reason } => format!("[server] {}", reason),
-                    ServerToClient::Pong => "[server] pong".to_string(),
-                    ServerToClient::GlobalMessage { from, text } => {
-                        format!("[globale] <{}> {}", from, text)
-                    }
-                    ServerToClient::GroupCreated { group } => {
-                        format!("[server] gruppo '{}' creato correttamente!", group)
-                    }
-                };
+        let rendered = match msg {
+            ServerToClient::Registered { ok, reason } => {
+                format!("[server] registrazione: ok={} {:?}", ok, reason)
+            }
+            ServerToClient::InviteCode { group, code, client_id } => format!(
+                "[server] codice invito per il gruppo '{}': {} da {}",
+                group, code, client_id
+            ),
+            ServerToClient::InviteCodeForMe { group, code } => format!(
+                "[server] codice invito per il gruppo '{}': {}",
+                group, code
+            ),
+            ServerToClient::Joined { group } => {
+                format!("[server] sei entrato nel gruppo '{}'", group)
+            }
+            ServerToClient::Left { group } => {
+                format!("[server] sei uscito dal gruppo '{}'", group)
+            }
+            ServerToClient::Message { group, from, text } => {
+                format!("[{}] <{}> {}", group, from, text)
+            }
+            ServerToClient::MessageServer { text } => format!("[server] {}", text),
+            ServerToClient::Groups { groups } => {
+                format!("Gruppi di appartenenza: {:?}", groups)
+            }
+            ServerToClient::ListUsers { users } => format!("Users: {:?}", users),
+            ServerToClient::Error { reason } => format!("[error] {}", reason),
+            ServerToClient::Pong => "[server] pong".to_string(),
+            ServerToClient::GlobalMessage { from, text } => {
+                format!("[globale] <{}> {}", from, text)
+            }
+            ServerToClient::GroupCreated { group } => {
+                format!("[server] gruppo '{}' creato correttamente!", group)
+            }
+        };
                 let _ = msg_tx.send(rendered);
             }
         }
@@ -124,6 +124,10 @@ async fn main() -> anyhow::Result<()> {
     stdout.execute(terminal::EnterAlternateScreen)?;
     // Abilita cattura eventi mouse per lo scroll
     stdout.execute(crossterm::event::EnableMouseCapture)?;
+    // Nascondi il cursore e disabilita l'auto-wrap per evitare residui
+    stdout.execute(cursor::Show)?;
+    write!(stdout, "\x1b[?7l")?; // DECAWM off (disable line wrap)
+    stdout.flush()?;
     // semplice prompt persistente
     let prompt = "> ";
     let mut input = String::new();
@@ -132,26 +136,48 @@ async fn main() -> anyhow::Result<()> {
 
     // ridisegna intero schermo (viewport) + riga input
     let redraw = |stdout: &mut io::Stdout, messages: &Vec<String>, scroll_offset: usize, input: &str| -> anyhow::Result<()> {
+        use crossterm::{cursor, terminal, QueueableCommand};
         let (cols, rows) = terminal::size()?;
         let usable_rows = rows.saturating_sub(1); // ultima riga per input
         // determina l'intervallo di messaggi da mostrare
         let total = messages.len();
         let end_index = total.saturating_sub(scroll_offset);
         let start_index = end_index.saturating_sub(usable_rows as usize);
+
+        // Pulisci tutto lo schermo
         stdout.queue(terminal::Clear(terminal::ClearType::All))?;
-        stdout.queue(cursor::MoveTo(0,0))?;
-        for (i, line) in messages[start_index..end_index].iter().enumerate() {
+
+        // Disegna ogni riga visibile: MoveTo + Clear(CurrentLine) prima di scrivere
+        let visible_messages = &messages[start_index..end_index];
+        for (i, line) in visible_messages.iter().enumerate() {
+            stdout.queue(cursor::MoveTo(0, i as u16))?;
+            stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
             let mut display = line.clone();
             if display.len() > cols as usize { display.truncate(cols as usize); }
+
+            use crossterm::style::{Color, SetForegroundColor, ResetColor};
+            // Scegli colore in base al prefisso
+            let color = if display.starts_with("[error]") {
+                Some(Color::Red)
+            } else if display.starts_with("[server]") {
+                Some(Color::Green)
+            }  else {
+                None
+            };
+
+            if let Some(c) = color { stdout.queue(SetForegroundColor(c))?; }
             write!(stdout, "{}", display)?;
-            if (i as u16) < usable_rows.saturating_sub(1) { writeln!(stdout)?; }
+            if color.is_some() { stdout.queue(ResetColor)?; }
         }
-        // riga input
+        
+        // Riga di input: stessa strategia (MoveTo + Clear(CurrentLine))
         stdout.queue(cursor::MoveTo(0, rows.saturating_sub(1)))?;
         stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
         let mut inp = format!("{}{}", prompt, input);
         if inp.len() > cols as usize { inp.truncate(cols as usize); }
         write!(stdout, "{}", inp)?;
+        // Assicurati che il cursore sia visibile e posizionato alla fine della riga di input
+        stdout.queue(cursor::Show)?;
         stdout.flush()?;
         Ok(())
     };
@@ -238,7 +264,10 @@ async fn main() -> anyhow::Result<()> {
     // Ripristina terminale
     terminal::disable_raw_mode()?;
     stdout.execute(crossterm::event::DisableMouseCapture)?;
+    stdout.execute(cursor::Show)?;            // mostra di nuovo il cursore
+    write!(stdout, "\x1b[?7h")?;             // DECAWM on (re-enable line wrap)
     stdout.execute(terminal::LeaveAlternateScreen)?;
+    stdout.flush()?;
     println!("{} ti sei disconnesso correttamente", my_nick);
 
     read_task.abort();
@@ -339,6 +368,7 @@ async fn handle_command(line: &str, writer_half: &Arc<Mutex<OwnedWriteHalf>>, my
         out.push("/help (o /)                  visualizza questo menu dettagliato".into());
         out.push("/create <name>               crea un nuovo gruppo con nome <name>".into());
         out.push("/invite <group> <nick>       invita l'utente <nick> nel gruppo <group>".into());
+        out.push("/join <group> <code>         unisciti al gruppo <group> con il codice <code>".into());
         out.push("/users                       mostra tutti gli utenti connessi".into());
         out.push("/groups                      mostra i gruppi di appartenenza".into());
         out.push("/msg <group> <text>          invia il messaggio <text> al gruppo <group>".into());
@@ -358,16 +388,16 @@ async fn handle_command(line: &str, writer_half: &Arc<Mutex<OwnedWriteHalf>>, my
         if let (Some(group), Some(nick)) = (it.next(), it.next()) {
             let mut wh = writer_half.lock().await;
             let _ = send(&mut *wh, &ClientToServer::Invite { group: group.into(), nick: nick.into() }).await;
-        } else { out.push("uso: /invite <group> <nick>".into()); }
+        } else { out.push("[error] uso: /invite <group> <nick>".into()); }
     } else if let Some(rest) = line.strip_prefix("/join ") {
         let mut it = rest.splitn(2, ' ');
         if let (Some(group), Some(code)) = (it.next(), it.next()) {
             let mut wh = writer_half.lock().await;
             let _ = send(&mut *wh, &ClientToServer::JoinGroup { group: group.into(), invite_code: code.into() }).await;
-        } else { out.push("uso: /join <group> <code>".into()); }
+        } else { out.push("[error] uso: /join <group> <code>".into()); }
     } else if let Some(group) = line.strip_prefix("/leave ") {
         let group = group.trim();
-        if group.is_empty() { out.push("uso: /leave <group>".into()); }
+        if group.is_empty() { out.push("[error] uso: /leave <group>".into()); }
         else {
             let mut wh = writer_half.lock().await;
             let _ = send(&mut *wh, &ClientToServer::LeaveGroup { group: group.into() }).await;
@@ -383,9 +413,9 @@ async fn handle_command(line: &str, writer_half: &Arc<Mutex<OwnedWriteHalf>>, my
         if let (Some(group), Some(text)) = (it.next(), it.next()) {
             let mut wh = writer_half.lock().await;
             let _ = send(&mut *wh, &ClientToServer::SendMessage { group: group.into(), text: text.into(), nick: my_nick.to_string() }).await;
-        } else { out.push("uso: /msg <group> <text>".into()); }
+        } else { out.push("[error] uso: /msg <group> <text>".into()); }
     } else if line.starts_with('/') {
-        out.push("[server] comando errato".into());
+        out.push("[error] comando errato".into());
     } else {
         let mut wh = writer_half.lock().await;
         let _ = send(&mut *wh, &ClientToServer::GlobalMessage { text: line.to_string() }).await;
