@@ -39,6 +39,10 @@ pub fn validate_identifier(kind: NameKind, s: &str) -> Result<(), String> {
     if !s.is_ascii() {
         return Err("Sono consentiti solo caratteri ASCII.".into());
     }
+    let lowered = s.to_ascii_lowercase();
+    if lowered == "server" || lowered == "client" {
+        return Err(format!("Il {} non può chiamarsi 'server' o 'client'", kind.label()));
+    }
     if s.chars().any(|c| c.is_whitespace()) {
         return Err(format!("Il {} non può contenere spazi o caratteri di whitespace.", kind.label()));
     }

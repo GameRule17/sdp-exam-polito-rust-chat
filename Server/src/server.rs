@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use tokio::{net::TcpListener, sync::RwLock};
-use tracing::{info, warn};
+use tracing::warn;
 
 use crate::connection::handle_conn;
 use crate::state::State;
