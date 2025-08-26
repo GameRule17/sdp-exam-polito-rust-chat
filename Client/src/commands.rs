@@ -17,6 +17,7 @@ pub async fn handle_command(line: &str, writer_half: &Arc<Mutex<OwnedWriteHalf>>
         out.push("/create <name>               crea un nuovo gruppo con nome <name>".into());
         out.push("/invite <group> <nick>       invita l'utente <nick> nel gruppo <group>".into());
         out.push("/join <group> <code>         unisciti al gruppo <group> con il codice <code>".into());
+        out.push("/leave <group>               esci dal gruppo <group>".into());
         out.push("/users                       mostra tutti gli utenti connessi".into());
         out.push("/groups                      mostra i gruppi di appartenenza".into());
         out.push("/msg <group> <text>          invia il messaggio <text> al gruppo <group>".into());

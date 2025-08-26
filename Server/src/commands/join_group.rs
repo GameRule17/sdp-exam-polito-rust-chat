@@ -28,6 +28,27 @@ pub async fn handle(group: String, invite_code: String, client_id: ClientId, tx:
         return CommandResult::continue_with(client_id);
     }
 
+    // Se già membro del gruppo, evita duplicati e segnala l'errore all'utente
+    if st
+        .groups
+        .get(&group)
+        .map_or(false, |g| g.members.contains(&id))
+    {
+        let _ = tx.send(ServerToClient::Error { reason: format!("Sei già membro del gruppo {group}") });
+        return CommandResult::continue_with(client_id);
+    }
+
+    // L'utente può entrare: rimuovi preventivamente qualsiasi altro invito pendente per lo stesso (gruppo, utente)
+    // in modo che eventuali vecchi codici non diventino riutilizzabili in seguito
+    let to_delete: Vec<String> = st
+        .invites
+        .iter()
+        .filter_map(|(code, (gname, nick))| {
+            if gname == &group && nick.eq_ignore_ascii_case(&my_nick) { Some(code.clone()) } else { None }
+        })
+        .collect();
+    for c in to_delete { st.invites.remove(&c); }
+
     st.groups.entry(group.clone()).or_default().members.insert(id);
 
     let _ = tx.send(ServerToClient::Joined { group });

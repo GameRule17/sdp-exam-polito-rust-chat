@@ -18,7 +18,8 @@ pub async fn handle(group: String, nick: String, _client_id: ClientId, tx: &Tx, 
         .find(|(existing_nick, _)| existing_nick.eq_ignore_ascii_case(&nick))
         .map(|(_, id)| *id);
 
-    if (st.users_by_nick.get(&nick).is_none()) || (id_user.is_none()) {
+    // se l'utente non esiste, errore
+    if id_user.is_none() {
         let _ = tx.send(ServerToClient::Error { reason: format!("Utente {nick} inesistente") });
         return CommandResult::continue_with(_client_id);
     }
@@ -31,6 +32,17 @@ pub async fn handle(group: String, nick: String, _client_id: ClientId, tx: &Tx, 
         let _ = tx.send(ServerToClient::Error { reason: format!("Utente {nick} già membro del gruppo {group}") });
         return CommandResult::continue_with(_client_id);
     }
+
+    // Invalida eventuali inviti precedenti per lo stesso (gruppo, utente) – solo l'ultimo rimane valido
+    // Confronto nick case-insensitive per evitare duplicati con diverso casing
+    let keys_to_remove: Vec<String> = st
+        .invites
+        .iter()
+        .filter_map(|(code, (g, n))| {
+            if g == &group && n.eq_ignore_ascii_case(&nick) { Some(code.clone()) } else { None }
+        })
+        .collect();
+    for k in keys_to_remove { st.invites.remove(&k); }
 
     let code = short_code();
     st.invites.insert(code.clone(), (group.clone(), nick.clone()));
