@@ -11,6 +11,7 @@ mod state;
 mod util;
 mod connection;
 mod server;
+pub mod commands;
 
 use args::Args;
 use state::State;
