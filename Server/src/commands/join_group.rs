@@ -7,7 +7,8 @@ use super::{ClientId, CommandResult};
 pub async fn handle(group: String, invite_code: String, client_id: ClientId, tx: &Tx, state: &Arc<RwLock<State>>) -> CommandResult {
     let mut st = state.write().await;
 
-    let (g, allowed) = match st.invites.remove(&invite_code) {
+    // Non consumare il codice subito: verifica prima che il join sia valido
+    let (g, allowed) = match st.invites.get(&invite_code).cloned() {
         Some(v) => v,
         None => {
             let _ = tx.send(ServerToClient::Error { reason: "Invito non valido".into() });
@@ -23,7 +24,7 @@ pub async fn handle(group: String, invite_code: String, client_id: ClientId, tx:
     let id = match client_id { Some(id) => id, None => { let _ = tx.send(ServerToClient::Error { reason: "Non registrato".into() }); return CommandResult::continue_with(client_id); } };
 
     let my_nick = st.nicks_by_id.get(&id).cloned().unwrap_or_default();
-    if my_nick != allowed {
+    if !my_nick.eq_ignore_ascii_case(&allowed) {
         let _ = tx.send(ServerToClient::Error { reason: format!("Invito destinato a {allowed}") });
         return CommandResult::continue_with(client_id);
     }
@@ -38,8 +39,10 @@ pub async fn handle(group: String, invite_code: String, client_id: ClientId, tx:
         return CommandResult::continue_with(client_id);
     }
 
-    // L'utente può entrare: rimuovi preventivamente qualsiasi altro invito pendente per lo stesso (gruppo, utente)
+    // L'utente può entrare: rimuovi il codice usato e qualsiasi altro invito pendente per lo stesso (gruppo, utente)
     // in modo che eventuali vecchi codici non diventino riutilizzabili in seguito
+    // Consuma il codice usato
+    st.invites.remove(&invite_code);
     let to_delete: Vec<String> = st
         .invites
         .iter()

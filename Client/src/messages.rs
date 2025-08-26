@@ -24,9 +24,9 @@ pub fn render(msg: ServerToClient) -> String {
         }
         ServerToClient::MessageServer { text } => format!("[server] {}", text),
         ServerToClient::Groups { groups } => {
-            format!("Gruppi di appartenenza: {:?}", groups)
+            format!("[server] Gruppi di appartenenza: {:?}", groups)
         }
-        ServerToClient::ListUsers { users } => format!("Users: {:?}", users),
+        ServerToClient::ListUsers { users } => format!("[server] Users: {:?}", users),
         ServerToClient::Error { reason } => format!("[error] {}", reason),
         ServerToClient::Pong => "[server] pong".to_string(),
         ServerToClient::GlobalMessage { from, text } => {

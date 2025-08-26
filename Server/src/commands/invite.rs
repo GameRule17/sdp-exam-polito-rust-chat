@@ -11,6 +11,21 @@ pub async fn handle(group: String, nick: String, _client_id: ClientId, tx: &Tx, 
         let _ = tx.send(ServerToClient::Error { reason: format!("Gruppo {group} inesistente") });
         return CommandResult::continue_with(_client_id);
     }
+
+    // verifica che il chiamante sia registrato e membro del gruppo
+    let inviter_id = match _client_id {
+        Some(id) => id,
+        None => {
+            let _ = tx.send(ServerToClient::Error { reason: "Non registrato".into() });
+            return CommandResult::continue_with(_client_id);
+        }
+    };
+    if let Some(g) = st.groups.get(&group) {
+        if !g.members.contains(&inviter_id) {
+            let _ = tx.send(ServerToClient::Error { reason: format!("Non sei membro del gruppo {group}") });
+            return CommandResult::continue_with(_client_id);
+        }
+    }
     // lookup utente destinatario case-insensitive
     let id_user = st
         .users_by_nick
@@ -53,7 +68,7 @@ pub async fn handle(group: String, nick: String, _client_id: ClientId, tx: &Tx, 
             let _ = txm.send(ServerToClient::InviteCode {
                 group: group.clone(),
                 code: code.clone(),
-                client_id: _client_id
+                client_id: Some(inviter_id)
                     .and_then(|id| st.nicks_by_id.get(&id).cloned())
                     .unwrap_or_default(),
             });
