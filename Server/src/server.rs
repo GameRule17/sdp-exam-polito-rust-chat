@@ -9,7 +9,7 @@ pub async fn run(bind_addr: &str, state: Arc<RwLock<State>>) -> anyhow::Result<(
     // Proviamo a bindare l'indirizzo; se fallisce mostriamo un messaggio più amichevole in italiano
     let listener = match TcpListener::bind(bind_addr).await {
         Ok(l) => {
-            info!("Bind riuscito su {}", bind_addr);
+            // info!("Bind riuscito su {}", bind_addr);
             l
         }
         Err(e) => {
