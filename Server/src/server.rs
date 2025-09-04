@@ -1,3 +1,8 @@
+/*
+Modulo Server: si occupa del bind sull'indirizzo specificato e accetta le connessioni dai client.
+Per ogni connessione avvia un task dedicato per la gestione.
+*/
+
 use std::sync::Arc;
 use tokio::{net::TcpListener, sync::RwLock};
 use tracing::warn;

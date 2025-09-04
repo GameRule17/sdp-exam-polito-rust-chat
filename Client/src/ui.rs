@@ -1,3 +1,8 @@
+/*
+Modulo UI: implementa l'interfaccia utente testuale del client.
+Gestisce input, output, rendering dei messaggi e interazione con l'utente.
+*/
+
 use std::io::{self, Write};
 use std::sync::Arc;
 use std::time::Duration;

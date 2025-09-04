@@ -1,3 +1,7 @@
+/*
+Gestisce la logica di ingresso in un gruppo tramite codice invito. Verifica la validità e aggiorna lo stato.
+*/
+
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use ruggine_common::ServerToClient;

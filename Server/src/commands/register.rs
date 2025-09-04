@@ -1,3 +1,7 @@
+/*
+Gestisce la registrazione di un nuovo utente. Verifica la sintassi del nickname e l'unicità, aggiorna lo stato e invia la conferma.
+*/
+
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;

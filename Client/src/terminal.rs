@@ -1,3 +1,7 @@
+/*
+Modulo Terminal: gestisce le operazioni sul terminale locale, come la modalità raw, il prompt del nickname e il ripristino dello stato.
+*/
+
 use std::io::{self, Write};
 
 pub fn restore_terminal() {

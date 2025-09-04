@@ -1,3 +1,8 @@
+/*
+Modulo Validation: implementa le regole di validazione per nickname e nomi dei gruppi.
+Garantisce che gli identificatori rispettino le regole di sintassi e unicità.
+*/
+
 /*  
     Regole comuni di validazione lato server per nickname e nomi dei gruppi
     - non vuoto, max 32 caratteri

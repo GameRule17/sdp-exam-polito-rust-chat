@@ -1,3 +1,7 @@
+/*
+Gestisce la creazione di un nuovo gruppo. Verifica la validità del nome, l'unicità e aggiunge il creatore come primo membro.
+*/
+
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use ruggine_common::ServerToClient;

@@ -1,3 +1,8 @@
+/*
+Modulo Connection: gestisce la connessione TCP con ciascun client.
+Si occupa di ricevere, interpretare e inoltrare i messaggi tra client e server, e di gestire la disconnessione.
+*/
+
 use std::sync::Arc;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},

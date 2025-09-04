@@ -1,3 +1,8 @@
+/*
+Modulo Messages: si occupa di formattare e visualizzare i messaggi ricevuti dal server.
+Traduce le strutture ServerToClient in stringhe leggibili per l'utente.
+*/
+
 use ruggine_common::ServerToClient;
 
 pub fn render(msg: ServerToClient) -> String {

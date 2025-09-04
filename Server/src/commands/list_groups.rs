@@ -1,3 +1,7 @@
+/*
+Restituisce la lista dei gruppi di cui l'utente è membro. Segnala errore se non appartiene a nessun gruppo.
+*/
+
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use ruggine_common::ServerToClient;

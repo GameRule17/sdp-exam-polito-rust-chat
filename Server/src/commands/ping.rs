@@ -1,3 +1,7 @@
+/*
+Gestisce il comando di ping inviando una risposta pong al client.
+*/
+
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use ruggine_common::ServerToClient;

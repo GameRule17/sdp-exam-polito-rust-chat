@@ -1,3 +1,7 @@
+/*
+Gestisce l'invio di messaggi a un gruppo. Verifica i permessi e inoltra il messaggio ai membri del gruppo.
+*/
+
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use ruggine_common::ServerToClient;

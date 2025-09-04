@@ -1,3 +1,8 @@
+/*
+Entry point del client chat.
+Inizializza la connessione, effettua l'handshake e avvia l'interfaccia utente.
+*/
+
 mod args;
 mod commands;
 mod handshake;

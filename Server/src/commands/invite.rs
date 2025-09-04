@@ -1,3 +1,7 @@
+/*
+Gestisce l'invito di un utente a un gruppo tramite codice invito. Verifica i permessi e invia il codice al destinatario.
+*/
+
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::warn;

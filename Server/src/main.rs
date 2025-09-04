@@ -1,3 +1,8 @@
+/*
+Entry point del server chat.
+Inizializza il logger, la struttura di stato e avvia il ciclo di accettazione delle connessioni.
+*/
+
 use clap::Parser;
 use ctrlc;
 use std::sync::Arc;

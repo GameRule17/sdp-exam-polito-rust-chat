@@ -1,3 +1,8 @@
+/*
+Modulo Commands: contiene la logica per interpretare e gestire i comandi inseriti dall'utente nel client.
+Invia le richieste appropriate al server e gestisce la risposta locale.
+*/
+
 use std::sync::Arc;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::Mutex;

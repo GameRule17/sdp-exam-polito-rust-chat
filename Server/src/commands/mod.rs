@@ -1,3 +1,7 @@
+/*
+Modulo centrale dei comandi: definisce il tipo CommandResult, gestisce il dispatch dei comandi e importa tutti gli handler specifici.
+*/
+
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;

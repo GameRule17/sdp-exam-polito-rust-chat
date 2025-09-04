@@ -1,3 +1,8 @@
+/*
+Modulo Handshake: gestisce la fase di registrazione e handshake tra client e server.
+Effettua il login e gestisce la negoziazione del nickname.
+*/
+
 use tokio::io::{BufReader, Lines};
 use tokio::net::tcp::OwnedReadHalf;
 use uuid::Uuid;

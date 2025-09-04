@@ -1,3 +1,7 @@
+/*
+Gestisce la disconnessione di un utente dal server. Aggiorna lo stato e rimuove l'utente da gruppi e strutture dati.
+*/
+
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use crate::state::{State, Tx};

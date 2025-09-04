@@ -1,3 +1,8 @@
+/*
+Modulo Net: gestisce l'invio di messaggi dal client al server tramite la connessione TCP.
+Serializza i dati e li trasmette in formato NDJSON.
+*/
+
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::io::AsyncWriteExt;
 use ruggine_common::ClientToServer;

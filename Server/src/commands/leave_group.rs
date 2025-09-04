@@ -1,3 +1,7 @@
+/*
+Gestisce la logica di uscita da un gruppo. Rimuove l'utente e cancella il gruppo se vuoto.
+*/
+
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use ruggine_common::ServerToClient;

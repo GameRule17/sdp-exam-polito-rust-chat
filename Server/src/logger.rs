@@ -1,3 +1,8 @@
+/*
+Modulo Logger: registra periodicamente l'utilizzo della CPU e il tempo di esecuzione del server in un file di log.
+Utile per monitoraggio e analisi delle prestazioni.
+*/
+
 use sysinfo::{System, Pid};
 use chrono::Local;
 use tokio::time::{sleep, Duration};

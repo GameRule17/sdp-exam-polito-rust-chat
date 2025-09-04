@@ -1,3 +1,7 @@
+/*
+Restituisce la lista degli utenti connessi, evidenziando il richiedente come "(tu)".
+*/
+
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use ruggine_common::ServerToClient;

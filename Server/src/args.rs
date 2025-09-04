@@ -1,5 +1,10 @@
 use clap::Parser;
 
+/*
+Modulo Args: gestisce il parsing degli argomenti da linea di comando per il server.
+Permette di specificare l'indirizzo di bind su cui il server ascolta.
+*/
+
 #[derive(Parser, Debug)]
 #[command(name = "ruggine-server")]
 pub struct Args {

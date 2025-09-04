@@ -1,3 +1,7 @@
+/*
+Gestisce l'invio di messaggi globali a tutti i client connessi, escluso il mittente.
+*/
+
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use ruggine_common::ServerToClient;

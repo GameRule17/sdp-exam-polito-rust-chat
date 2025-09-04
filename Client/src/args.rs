@@ -1,5 +1,10 @@
 use clap::Parser;
 
+/*
+Modulo Args: gestisce il parsing degli argomenti da linea di comando per il client.
+Permette di specificare l'indirizzo del server e il nickname dell'utente.
+*/
+
 #[derive(Parser, Debug, Clone)]
 #[command(name = "ruggine-client")]
 pub struct Args {
