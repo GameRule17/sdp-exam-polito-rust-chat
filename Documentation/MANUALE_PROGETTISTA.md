@@ -9,7 +9,7 @@ Questo progetto implementa una chat client-server in Rust, con architettura modu
 G26/
 ├── Client/         # Codice sorgente del client
 ├── Server/         # Codice sorgente del server
-├── common/         # Tipi condivisi tra client e server
+├── Common/         # Tipi condivisi tra client e server
 ├── target/         # Output di compilazione
 ```
 
@@ -74,7 +74,7 @@ G26/
 - **validation.rs**: Regole di validazione nickname/gruppi.
 - **commands/**: Ogni file implementa la logica di un comando (es. create_group, invite, join_group, ecc.).
 
-### common
+### Common
 - **lib.rs**: Definisce i tipi di messaggio, errori, e le strutture condivise tra client e server.
 
 ## Convenzioni di codice
@@ -83,9 +83,14 @@ G26/
 - I nomi delle funzioni e variabili sono descrittivi e in inglese.
 - I comandi e le interfacce utente sono documentati nel codice e nel manuale utente.
 
+## Logs e monitoraggio
+- Il server logga % di uso della CPU e runtime ogni 2 minuti in un file chiamato `Server/server_cpu.log`.
+- Il logging è gestito in modo asincrono per non bloccare il server.
+![Esempio logger](/Documentation/imgs/esempio_logs.png)
+
 ## Estendibilità
 - Per aggiungere un nuovo comando:
-  1. Definire il tipo in common/lib.rs.
+  1. Definire il tipo in Common/lib.rs.
   2. Implementare la logica lato server in commands/.
   3. Gestire il comando lato client in commands.rs.
   4. Aggiornare la UI e la documentazione.
