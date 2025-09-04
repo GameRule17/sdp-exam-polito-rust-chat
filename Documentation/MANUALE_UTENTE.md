@@ -6,7 +6,7 @@ Questa guida spiega come installare, avviare e utilizzare la chat client-server 
 ---
 
 ## Requisiti
-- Sistema operativo: Windows, Linux o MacOS
+- Sistema operativo: Windows, Linux o MacOS (compatibilità certificata con Windows 11 e MacOS Sequoia 15.6)
 - Rust installato ([https://rustup.rs](https://rustup.rs))
 - Connessione di rete locale
 
@@ -15,7 +15,7 @@ Questa guida spiega come installare, avviare e utilizzare la chat client-server 
 ## Installazione
 1. Clona il repository:
    ```
-   git clone <URL_DEL_REPO>
+   git clone https://github.com/PdS2425-C2/G26.git
    cd G26
    ```
 2. Compila il server:
@@ -32,14 +32,20 @@ Questa guida spiega come installare, avviare e utilizzare la chat client-server 
 ---
 
 ## Avvio del Server
+Una volta ottenuti il file eseguibili, puoi avviare il server e il client.
 1. Vai nella cartella `Server`:
    ```
    cd Server
    ```
 2. Avvia il server:
+   Attraverso riga di comando:
    ```
    cargo run --release
    ```
+   Oppure eseguendo direttamente il file binario:
+   - Su Windows: fai doppio click su `target\release\ruggine-server.exe`
+   - Su Linux/MacOS: esegui `./target/release/ruggine-server`
+
    Il server si mette in ascolto sulla porta di default (es. 127.0.0.1:7000).
 
 ---
@@ -53,6 +59,10 @@ Questa guida spiega come installare, avviare e utilizzare la chat client-server 
    ```
    cargo run --release -- --server 127.0.0.1:7000 --nick TuoNick
    ```
+   Oppure eseguendo direttamente il file binario:
+   - Su Windows: fai doppio click su `target\release\ruggine-client.exe`
+   - Su Linux/MacOS: esegui `./target/release/ruggine-client`
+   
    Se non specifichi il nickname, ti verrà richiesto all'avvio.
 
 ---
@@ -76,13 +86,8 @@ Puoi anche inviare messaggi globali semplicemente scrivendo il testo e premendo 
 ---
 
 ## Esempio di sessione
-```
-> /create amici
-> /invite amici luca
-> /msg amici Ciao a tutti!
-> /users
-> /quit
-```
+![Esempio di sessione1](/Documentation/imgs/esempio_chat_1.png)
+![Esempio di sessione2](/Documentation/imgs/esempio_chat_2.png)
 
 ---
 

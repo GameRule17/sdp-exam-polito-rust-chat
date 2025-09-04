@@ -37,7 +37,7 @@ G26/
 ### common/src
 - **lib.rs**: definizione tipi condivisi (ClientToServer, ServerToClient, errori)
 
-## Scelte tecnologiche
+## Scelte tecnologiche e librerie esterne
 - **Rust**: sicurezza, concorrenza, performance
 - **Tokio**: runtime asincrono per networking
 - **Clap**: parsing argomenti CLI
