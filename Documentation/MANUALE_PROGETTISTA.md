@@ -3,40 +3,6 @@
 ## Introduzione
 Questo progetto implementa una chat client-server in Rust, con architettura modulare e separazione tra client, server e common. Il sistema supporta gruppi, inviti, messaggi globali e logging delle risorse.
 
-## Struttura delle cartelle
-
-```
-G26/
-├── Client/         # Codice sorgente del client
-├── Server/         # Codice sorgente del server
-├── Common/         # Tipi condivisi tra client e server
-├── target/         # Output di compilazione
-```
-
-### Client/src
-- **args.rs**: parsing degli argomenti da riga di comando
-- **commands.rs**: gestione dei comandi utente
-- **handshake.rs**: logica di registrazione e handshake
-- **main.rs**: entrypoint, orchestrazione moduli
-- **messages.rs**: formattazione messaggi dal server
-- **net.rs**: invio messaggi al server
-- **terminal.rs**: gestione terminale e input nickname
-- **ui.rs**: interfaccia utente, REPL, input/output
-
-### Server/src
-- **args.rs**: parsing argomenti server
-- **connection.rs**: gestione connessioni TCP
-- **logger.rs**: logging CPU e runtime
-- **main.rs**: entrypoint server
-- **server.rs**: ciclo principale, accettazione client
-- **state.rs**: stato condiviso server
-- **util.rs**: utility generiche
-- **validation.rs**: validazione nickname/gruppi
-- **commands/**: moduli per ogni comando server
-
-### common/src
-- **lib.rs**: definizione tipi condivisi (ClientToServer, ServerToClient, errori)
-
 ## Scelte tecnologiche e librerie esterne
 - **Rust**: sicurezza, concorrenza, performance
 - **Tokio**: runtime asincrono per networking
@@ -52,6 +18,16 @@ G26/
 - I comandi sono gestiti in modo modulare sia lato client che server.
 
 ## Descrizione dei moduli principali
+
+### Struttura delle cartelle
+
+```
+G26/
+├── Client/         # Codice sorgente del client
+├── Server/         # Codice sorgente del server
+├── Common/         # Tipi condivisi tra client e server
+├── target/         # Output di compilazione
+```
 
 ### Client
 - **args.rs**: Definisce la struct Args per i parametri da CLI (server, nick).
