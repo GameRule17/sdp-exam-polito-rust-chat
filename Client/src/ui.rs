@@ -12,7 +12,7 @@ use tokio::io::{BufReader, Lines};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::Mutex;
 
-use ruggine_common::{ServerToClient, ClientToServer};
+use ruggine_common::{ClientToServer, ServerToClient};
 
 use crate::commands::handle_command;
 use crate::messages::render;
@@ -27,7 +27,9 @@ pub async fn run_ui(
 ) -> anyhow::Result<()> {
     // Manteniamo un canale per inoltrare i messaggi del server all'interfaccia utente
     let (msg_tx, mut msg_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-    for m in handshake_msgs { let _ = msg_tx.send(m); }
+    for m in handshake_msgs {
+        let _ = msg_tx.send(m);
+    }
 
     // Task che legge dal server e invia testo formattato sul canale
     let read_task = {
@@ -47,8 +49,14 @@ pub async fn run_ui(
     tokio::spawn(async move {
         let _ = tokio::signal::ctrl_c().await;
         let mut wh = writer_half_ctrlc.lock().await;
-        let _ = send(&mut *wh, &ClientToServer::Logout { reason: Some("CTRL+C".to_string()) }).await;
-    // OwnedWriteHalf non espone shutdown diretto; drop del writer dopo il logout
+        let _ = send(
+            &mut *wh,
+            &ClientToServer::Logout {
+                reason: Some("CTRL+C".to_string()),
+            },
+        )
+        .await;
+        // OwnedWriteHalf non espone shutdown diretto; drop del writer dopo il logout
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         restore_terminal();
         std::process::exit(0);
@@ -68,11 +76,18 @@ pub async fn run_ui(
     let mut messages: Vec<String> = Vec::new();
     let mut scroll_offset: usize = 0;
 
-    let redraw = |stdout: &mut io::Stdout, messages: &Vec<String>, scroll_offset: usize, input: &str| -> anyhow::Result<()> {
+    let redraw = |stdout: &mut io::Stdout,
+                  messages: &Vec<String>,
+                  scroll_offset: usize,
+                  input: &str|
+     -> anyhow::Result<()> {
         let (cols, rows) = terminal::size()?;
         let usable_rows = rows.saturating_sub(1);
         let total = messages.len();
-        let end_index = total.saturating_sub(scroll_offset);
+        // Calcolo fine e inizio tenendo conto del limite massimo di scroll effettivo.
+        let max_scroll = total.saturating_sub(usable_rows as usize); // 0 se tutto entra nello schermo
+        let eff_scroll = scroll_offset.min(max_scroll); // clamp di sicurezza
+        let end_index = total.saturating_sub(eff_scroll);
         let start_index = end_index.saturating_sub(usable_rows as usize);
         stdout.queue(terminal::Clear(terminal::ClearType::All))?;
         let visible_messages = &messages[start_index..end_index];
@@ -80,19 +95,31 @@ pub async fn run_ui(
             stdout.queue(cursor::MoveTo(0, i as u16))?;
             stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
             let mut display = line.clone();
-            if display.len() > cols as usize { display.truncate(cols as usize); }
-            use crossterm::style::{Color, SetForegroundColor, ResetColor};
-            let color = if display.starts_with("[error]") { Some(Color::Red) }
-                else if display.starts_with("[server]") { Some(Color::Green) }
-                else { None };
-            if let Some(c) = color { stdout.queue(SetForegroundColor(c))?; }
+            if display.len() > cols as usize {
+                display.truncate(cols as usize);
+            }
+            use crossterm::style::{Color, ResetColor, SetForegroundColor};
+            let color = if display.starts_with("[error]") {
+                Some(Color::Red)
+            } else if display.starts_with("[server]") {
+                Some(Color::Green)
+            } else {
+                None
+            };
+            if let Some(c) = color {
+                stdout.queue(SetForegroundColor(c))?;
+            }
             write!(stdout, "{}", display)?;
-            if color.is_some() { stdout.queue(ResetColor)?; }
+            if color.is_some() {
+                stdout.queue(ResetColor)?;
+            }
         }
         stdout.queue(cursor::MoveTo(0, rows.saturating_sub(1)))?;
         stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine))?;
         let mut inp = format!("{}{}", prompt, input);
-        if inp.len() > cols as usize { inp.truncate(cols as usize); }
+        if inp.len() > cols as usize {
+            inp.truncate(cols as usize);
+        }
         write!(stdout, "{}", inp)?;
         stdout.queue(cursor::Show)?;
         stdout.flush()?;
@@ -105,7 +132,19 @@ pub async fn run_ui(
             maybe_msg = msg_rx.recv() => {
                 if let Some(txt) = maybe_msg {
                     messages.push(txt);
-                    if scroll_offset == 0 { redraw(&mut stdout, &messages, scroll_offset, &input)?; }
+                    // Se siamo ancorati in fondo (scroll_offset == 0) ridisegniamo subito.
+                    // Se l'utente è scrollato verso l'alto manteniamo la sua posizione relativa (clamp se necessario).
+                    if scroll_offset == 0 {
+                        redraw(&mut stdout, &messages, scroll_offset, &input)?;
+                    } else {
+                        // Clamp dello scroll se il numero di messaggi non giustifica più l'offset corrente
+                        let (_, rows) = terminal::size()?;
+                        let usable_rows = rows.saturating_sub(1) as usize;
+                        let total = messages.len();
+                        let max_scroll = total.saturating_sub(usable_rows);
+                        if scroll_offset > max_scroll { scroll_offset = max_scroll; }
+                        redraw(&mut stdout, &messages, scroll_offset, &input)?;
+                    }
                 }
             }
             _ = tokio::task::yield_now() => {
@@ -149,13 +188,24 @@ pub async fn run_ui(
                             use crossterm::event::MouseEventKind;
                             match m.kind {
                                 MouseEventKind::ScrollUp => {
-                                    if messages.len() > 0 {
-                                        let max_off = messages.len().saturating_sub(1);
-                                        if scroll_offset < max_off { scroll_offset += 1; redraw(&mut stdout, &messages, scroll_offset, &input)?; }
+                                    if !messages.is_empty() {
+                                        let (_, rows) = terminal::size()?;
+                                        let usable_rows = rows.saturating_sub(1) as usize;
+                                        let total = messages.len();
+                                        if total > usable_rows { // Scroll possibile solo se c'è overflow verticale
+                                            let max_scroll = total - usable_rows; // >=1
+                                            if scroll_offset < max_scroll {
+                                                scroll_offset += 1;
+                                                redraw(&mut stdout, &messages, scroll_offset, &input)?;
+                                            }
+                                        }
                                     }
                                 }
                                 MouseEventKind::ScrollDown => {
-                                    if scroll_offset > 0 { scroll_offset -= 1; redraw(&mut stdout, &messages, scroll_offset, &input)?; }
+                                    if scroll_offset > 0 {
+                                        scroll_offset -= 1;
+                                        redraw(&mut stdout, &messages, scroll_offset, &input)?;
+                                    }
                                 }
                                 _ => {}
                             }
