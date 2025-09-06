@@ -3,7 +3,7 @@ Modulo Validation: implementa le regole di validazione per nickname e nomi dei g
 Garantisce che gli identificatori rispettino le regole di sintassi e unicità.
 */
 
-/*  
+/*
     Regole comuni di validazione lato server per nickname e nomi dei gruppi
     - non vuoto, max 32 caratteri
     - solo ASCII
@@ -20,15 +20,15 @@ pub enum NameKind {
 
 impl NameKind {
     fn label(&self) -> &'static str {
-        match self { 
-            Self::Nick => "nickname", 
-            Self::Group => "nome del gruppo"
+        match self {
+            Self::Nick => "nickname",
+            Self::Group => "nome del gruppo",
         }
     }
     fn capital_label(&self) -> &'static str {
         match self {
             Self::Nick => "Nickname",
-            Self::Group => "Nome del gruppo"
+            Self::Group => "Nome del gruppo",
         }
     }
 }
@@ -46,18 +46,30 @@ pub fn validate_identifier(kind: NameKind, s: &str) -> Result<(), String> {
     }
     let lowered = s.to_ascii_lowercase();
     if lowered == "server" || lowered == "client" {
-        return Err(format!("Il {} non può chiamarsi 'server' o 'client'", kind.label()));
+        return Err(format!(
+            "Il {} non può chiamarsi 'server' o 'client'",
+            kind.label()
+        ));
     }
     if s.chars().any(|c| c.is_whitespace()) {
-        return Err(format!("Il {} non può contenere spazi o caratteri di whitespace.", kind.label()));
+        return Err(format!(
+            "Il {} non può contenere spazi o caratteri di whitespace.",
+            kind.label()
+        ));
     }
     if let Some(first) = s.chars().next() {
         if !first.is_ascii_alphabetic() {
-            return Err(format!("Il {} deve iniziare con una lettera (A-Z o a-z).", kind.label()));
+            return Err(format!(
+                "Il {} deve iniziare con una lettera (A-Z o a-z).",
+                kind.label()
+            ));
         }
     }
     if !s.chars().all(|c| c.is_ascii_alphanumeric()) {
-        return Err(format!("Il {} può contenere solo lettere e numeri (niente simboli).", kind.label()));
+        return Err(format!(
+            "Il {} può contenere solo lettere e numeri (niente simboli).",
+            kind.label()
+        ));
     }
     Ok(())
 }

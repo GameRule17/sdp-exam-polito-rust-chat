@@ -3,12 +3,12 @@ Modulo Logger: registra periodicamente l'utilizzo della CPU e il tempo di esecuz
 Utile per monitoraggio e analisi delle prestazioni.
 */
 
-use sysinfo::{System, Pid};
+use anyhow::Result;
 use chrono::Local;
-use tokio::time::{sleep, Duration};
 use std::fs::OpenOptions;
 use std::io::Write;
-use anyhow::Result;
+use sysinfo::{Pid, System};
+use tokio::time::{sleep, Duration};
 
 pub async fn start_cpu_logger(log_path: &str) -> Result<()> {
     // Ottengo il pid del processo server
@@ -25,13 +25,12 @@ pub async fn start_cpu_logger(log_path: &str) -> Result<()> {
 
         // Seleziona il processo server dalla lista dei processi del sistema
         if let Some(proc) = sys.process(pid) {
-
             // Acquisisce i dati relativi al processo
             let cpu_usage = proc.cpu_usage();
             let run_time = proc.run_time() / 60;
 
             let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-            
+
             // Formatta la stringa da inserire come append nel file
             // Formattiamo cpu_usage in larghezza fissa con 2 decimali e virgola come separatore
             // es: " 300,00" o "   0,05" in modo che tutte le righe siano allineate
@@ -43,7 +42,7 @@ pub async fn start_cpu_logger(log_path: &str) -> Result<()> {
                 "[{}] CPU: {}% | Run Time: {} min\n",
                 timestamp, cpu_str, run_time_str
             );
-            
+
             // Apertura file con le seguenti opzioni
             let mut file = OpenOptions::new()
                 .create(true) // Se esiste già lo apre solamente

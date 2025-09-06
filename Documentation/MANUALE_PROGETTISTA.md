@@ -1,17 +1,31 @@
 # MANUALE DEL PROGETTISTA
 
 ## Introduzione
+
 Questo progetto implementa una chat client-server in Rust, con architettura modulare e separazione tra client, server e common. Il sistema supporta gruppi, inviti, messaggi globali e logging delle risorse.
 
 ## Scelte tecnologiche e librerie esterne
-- **Rust**: sicurezza, concorrenza, performance
-- **Tokio**: runtime asincrono per networking
-- **Clap**: parsing argomenti CLI
-- **Crossterm**: gestione terminale cross-platform
-- **Serde**: serializzazione JSON
-- **Sysinfo**: monitoraggio risorse server
+
+| Libreria                         | Scopo principale                            | Componente    |
+| -------------------------------- | ------------------------------------------- | ------------- |
+| **tokio**                        | Runtime asincrono, networking e task        | Client/Server |
+| **serde / serde_json**           | Serializzazione/deserializzazione JSON      | Tutti         |
+| **uuid**                         | Identificatori unici per utenti/client      | Tutti         |
+| **clap**                         | Parsing degli argomenti da linea di comando | Client/Server |
+| **sysinfo**                      | Monitoraggio risorse di sistema             | Client/Server |
+| **tracing / tracing-subscriber** | Logging strutturato e diagnostica           | Client/Server |
+| **anyhow / thiserror**           | Gestione degli errori                       | Tutti         |
+| **crossterm**                    | Interfaccia terminale avanzata              | Client        |
+| **chrono**                       | Gestione date e orari                       | Client/Server |
+| **futures**                      | Primitive asincrone                         | Client        |
+| **ctrlc**                        | Gestione segnale di interruzione (CTRL+C)   | Client/Server |
+| **directories**                  | Utility per directory di sistema            | Client/Server |
+| **rand**                         | Generazione codici invito casuali           | Server        |
+
+Le librerie in grassetto sono fondamentali per la struttura e il funzionamento del sistema.
 
 ## Flusso di esecuzione
+
 - Il server avvia il logger, si mette in ascolto su una porta e accetta connessioni.
 - Il client si connette, effettua handshake (nickname, id), riceve messaggi e invia comandi.
 - La comunicazione avviene tramite messaggi JSON serializzati (vedi common/lib.rs).
@@ -30,6 +44,7 @@ G26/
 ```
 
 ### Client
+
 - **args.rs**: Definisce la struct Args per i parametri da CLI (server, nick).
 - **commands.rs**: Funzione handle_command che interpreta la stringa utente e invia il comando appropriato al server.
 - **handshake.rs**: Gestisce la registrazione utente, con retry se il nick non è accettato.
@@ -40,6 +55,7 @@ G26/
 - **ui.rs**: Gestisce il ciclo REPL, input da tastiera, output, scroll, colori.
 
 ### Server
+
 - **args.rs**: Parametri di avvio server (porta, ecc.).
 - **connection.rs**: Gestione handshake, lettura/scrittura TCP.
 - **logger.rs**: Log periodico di CPU e runtime su file.
@@ -51,20 +67,24 @@ G26/
 - **commands/**: Ogni file implementa la logica di un comando (es. create_group, invite, join_group, ecc.).
 
 ### Common
+
 - **lib.rs**: Definisce i tipi di messaggio, errori, e le strutture condivise tra client e server.
 
 ## Convenzioni di codice
+
 - Ogni modulo ha un commento iniziale che ne descrive lo scopo.
 - I commenti riga spiegano la logica delle funzioni e dei blocchi principali.
 - I nomi delle funzioni e variabili sono descrittivi e in inglese.
 - I comandi e le interfacce utente sono documentati nel codice e nel manuale utente.
 
 ## Logs e monitoraggio
+
 - Il server logga % di uso della CPU e runtime ogni 2 minuti in un file chiamato `Server/server_cpu.log`.
 - Il logging è gestito in modo asincrono per non bloccare il server.
-![Esempio logger](/Documentation/imgs/esempio_logs.png)
+  ![Esempio logger](/Documentation/imgs/esempio_logs.png)
 
 ## Estendibilità
+
 - Per aggiungere un nuovo comando:
   1. Definire il tipo in Common/lib.rs.
   2. Implementare la logica lato server in commands/.
@@ -74,14 +94,17 @@ G26/
 - Per nuove funzionalità, creare moduli separati e aggiornare main.rs per orchestrazione.
 
 ## Test
+
 - I test possono essere aggiunti nella cartella `Client/tests` e `Server/tests`.
 - Usare crate come `assert_cmd` e `predicates` per test end-to-end.
 - Testare casi di errore, input non valido, e flussi di comando.
 
 ## Dipendenze
+
 - Vedi i file Cargo.toml in Client, Server e common per la lista completa.
 
 ## Note finali
+
 - Mantenere la documentazione aggiornata.
 - Seguire le convenzioni di commento e modularità.
 - Per domande o estensioni, consultare i commenti nei file e la sezione Estendibilità.

@@ -9,13 +9,13 @@ use tokio::{
     net::TcpStream,
     sync::RwLock,
 };
-use tracing::{error};
+use tracing::error;
 use uuid::Uuid;
 
-use ruggine_common::{ClientToServer, ServerToClient};
 use crate::commands::dispatch;
+use ruggine_common::{ClientToServer, ServerToClient};
 
-use crate::state::{Rx, Tx, State};
+use crate::state::{Rx, State, Tx};
 // Validazioni e utility ora sono usate nei singoli moduli comando
 
 pub async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow::Result<()> {
@@ -70,15 +70,21 @@ pub async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow
 
                 let res = dispatch(msg, client_id, &tx, &state).await;
                 client_id = res.new_client_id;
-                if res.close { break; }
+                if res.close {
+                    break;
+                }
             }
             Ok(None) => {
                 // EOF: client ha chiuso la connessione in modo pulito -> pulizia dello stato
                 if let Some(id) = client_id.take() {
                     let mut st = state.write().await;
                     let nick_opt = st.nicks_by_id.get(&id).cloned();
-                    if let Some(nick) = nick_opt { println!("{} si è disconnesso dal server", nick); }
-                    if let Some(nick) = st.nicks_by_id.get(&id).cloned() { st.users_by_nick.remove(&nick); }
+                    if let Some(nick) = nick_opt {
+                        println!("{} si è disconnesso dal server", nick);
+                    }
+                    if let Some(nick) = st.nicks_by_id.get(&id).cloned() {
+                        st.users_by_nick.remove(&nick);
+                    }
                     st.nicks_by_id.remove(&id);
                     st.clients.remove(&id);
                 }
@@ -87,12 +93,21 @@ pub async fn handle_conn(stream: TcpStream, state: Arc<RwLock<State>>) -> anyhow
             Err(e) => {
                 // Se è un reset/abort/broken pipe, trattalo come disconnessione normale
                 use std::io::ErrorKind;
-                if matches!(e.kind(), ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted | ErrorKind::BrokenPipe) {
+                if matches!(
+                    e.kind(),
+                    ErrorKind::ConnectionReset
+                        | ErrorKind::ConnectionAborted
+                        | ErrorKind::BrokenPipe
+                ) {
                     if let Some(id) = client_id.take() {
                         let mut st = state.write().await;
                         let nick_opt = st.nicks_by_id.get(&id).cloned();
-                        if let Some(nick) = nick_opt { println!("{} si è disconnesso dal server", nick); }
-                        if let Some(nick) = st.nicks_by_id.get(&id).cloned() { st.users_by_nick.remove(&nick); }
+                        if let Some(nick) = nick_opt {
+                            println!("{} si è disconnesso dal server", nick);
+                        }
+                        if let Some(nick) = st.nicks_by_id.get(&id).cloned() {
+                            st.users_by_nick.remove(&nick);
+                        }
                         st.nicks_by_id.remove(&id);
                         st.clients.remove(&id);
                     }

@@ -2,16 +2,29 @@
 Gestisce la creazione di un nuovo gruppo. Verifica la validità del nome, l'unicità e aggiunge il creatore come primo membro.
 */
 
+use super::{ClientId, CommandResult};
+use crate::state::{State, Tx};
+use crate::validation::validate_group_name_syntax;
+use ruggine_common::ServerToClient;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use ruggine_common::ServerToClient;
-use crate::validation::validate_group_name_syntax;
-use crate::state::{State, Tx};
-use super::{ClientId, CommandResult};
 
-pub async fn handle(group: String, client_id: ClientId, tx: &Tx, state: &Arc<RwLock<State>>) -> CommandResult {
+pub async fn handle(
+    group: String,
+    client_id: ClientId,
+    tx: &Tx,
+    state: &Arc<RwLock<State>>,
+) -> CommandResult {
     let mut st = state.write().await;
-    let id = match client_id { Some(id) => id, None => { let _ = tx.send(ServerToClient::Error { reason: "Non registrato".into() }); return CommandResult::continue_with(client_id); } };
+    let id = match client_id {
+        Some(id) => id,
+        None => {
+            let _ = tx.send(ServerToClient::Error {
+                reason: "Non registrato".into(),
+            });
+            return CommandResult::continue_with(client_id);
+        }
+    };
 
     if let Err(reason) = validate_group_name_syntax(&group) {
         let _ = tx.send(ServerToClient::Error { reason });
@@ -26,15 +39,19 @@ pub async fn handle(group: String, client_id: ClientId, tx: &Tx, state: &Arc<RwL
         .cloned();
 
     if let Some(existing_group) = maybe_existing_group {
-        let _ = tx.send(ServerToClient::Error { reason: format!(
-            "Esiste già un gruppo con il nome '{}' (già registrato come '{}')",
-            group, existing_group
-        )});
+        let _ = tx.send(ServerToClient::Error {
+            reason: format!(
+                "Esiste già un gruppo con il nome '{}' (già registrato come '{}')",
+                group, existing_group
+            ),
+        });
         return CommandResult::continue_with(client_id);
     }
 
     if st.users_by_nick.get(&group).is_some() {
-        let _ = tx.send(ServerToClient::Error { reason: format!("Il nome '{group}' è già usato da un utente") });
+        let _ = tx.send(ServerToClient::Error {
+            reason: format!("Il nome '{group}' è già usato da un utente"),
+        });
         return CommandResult::continue_with(client_id);
     }
     let g = st.groups.entry(group.clone()).or_default();

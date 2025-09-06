@@ -2,17 +2,28 @@
 Gestisce l'invito di un utente a un gruppo tramite codice invito. Verifica i permessi e invia il codice al destinatario.
 */
 
+use super::{ClientId, CommandResult};
+use crate::{
+    state::{State, Tx},
+    util::short_code,
+};
+use ruggine_common::ServerToClient;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::warn;
-use ruggine_common::ServerToClient;
-use crate::{util::short_code, state::{State, Tx}};
-use super::{ClientId, CommandResult};
 
-pub async fn handle(group: String, nick: String, _client_id: ClientId, tx: &Tx, state: &Arc<RwLock<State>>) -> CommandResult {
+pub async fn handle(
+    group: String,
+    nick: String,
+    _client_id: ClientId,
+    tx: &Tx,
+    state: &Arc<RwLock<State>>,
+) -> CommandResult {
     let mut st = state.write().await;
     if !st.groups.contains_key(&group) {
-        let _ = tx.send(ServerToClient::Error { reason: format!("Gruppo {group} inesistente") });
+        let _ = tx.send(ServerToClient::Error {
+            reason: format!("Gruppo {group} inesistente"),
+        });
         return CommandResult::continue_with(_client_id);
     }
 
@@ -20,13 +31,17 @@ pub async fn handle(group: String, nick: String, _client_id: ClientId, tx: &Tx, 
     let inviter_id = match _client_id {
         Some(id) => id,
         None => {
-            let _ = tx.send(ServerToClient::Error { reason: "Non registrato".into() });
+            let _ = tx.send(ServerToClient::Error {
+                reason: "Non registrato".into(),
+            });
             return CommandResult::continue_with(_client_id);
         }
     };
     if let Some(g) = st.groups.get(&group) {
         if !g.members.contains(&inviter_id) {
-            let _ = tx.send(ServerToClient::Error { reason: format!("Non sei membro del gruppo {group}") });
+            let _ = tx.send(ServerToClient::Error {
+                reason: format!("Non sei membro del gruppo {group}"),
+            });
             return CommandResult::continue_with(_client_id);
         }
     }
@@ -39,7 +54,9 @@ pub async fn handle(group: String, nick: String, _client_id: ClientId, tx: &Tx, 
 
     // se l'utente non esiste, errore
     if id_user.is_none() {
-        let _ = tx.send(ServerToClient::Error { reason: format!("Utente {nick} inesistente") });
+        let _ = tx.send(ServerToClient::Error {
+            reason: format!("Utente {nick} inesistente"),
+        });
         return CommandResult::continue_with(_client_id);
     }
 
@@ -48,7 +65,9 @@ pub async fn handle(group: String, nick: String, _client_id: ClientId, tx: &Tx, 
         .get(&group)
         .map_or(false, |g| g.members.contains(&id_user.unwrap()))
     {
-        let _ = tx.send(ServerToClient::Error { reason: format!("Utente {nick} già membro del gruppo {group}") });
+        let _ = tx.send(ServerToClient::Error {
+            reason: format!("Utente {nick} già membro del gruppo {group}"),
+        });
         return CommandResult::continue_with(_client_id);
     }
 
@@ -58,13 +77,20 @@ pub async fn handle(group: String, nick: String, _client_id: ClientId, tx: &Tx, 
         .invites
         .iter()
         .filter_map(|(code, (g, n))| {
-            if g == &group && n.eq_ignore_ascii_case(&nick) { Some(code.clone()) } else { None }
+            if g == &group && n.eq_ignore_ascii_case(&nick) {
+                Some(code.clone())
+            } else {
+                None
+            }
         })
         .collect();
-    for k in keys_to_remove { st.invites.remove(&k); }
+    for k in keys_to_remove {
+        st.invites.remove(&k);
+    }
 
     let code = short_code();
-    st.invites.insert(code.clone(), (group.clone(), nick.clone()));
+    st.invites
+        .insert(code.clone(), (group.clone(), nick.clone()));
 
     // invia il codice di invito al client destinatario
     if let Some(id) = id_user {

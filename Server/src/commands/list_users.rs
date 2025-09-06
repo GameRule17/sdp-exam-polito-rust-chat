@@ -2,15 +2,23 @@
 Restituisce la lista degli utenti connessi, evidenziando il richiedente come "(tu)".
 */
 
+use super::{ClientId, CommandResult};
+use crate::state::{State, Tx};
+use ruggine_common::ServerToClient;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use ruggine_common::ServerToClient;
-use crate::state::{State, Tx};
-use super::{ClientId, CommandResult};
 
 pub async fn handle(client_id: ClientId, tx: &Tx, state: &Arc<RwLock<State>>) -> CommandResult {
     let st = state.read().await;
-    let id = match client_id { Some(id) => id, None => { let _ = tx.send(ServerToClient::Error { reason: "Non registrato".into() }); return CommandResult::continue_with(client_id); } };
+    let id = match client_id {
+        Some(id) => id,
+        None => {
+            let _ = tx.send(ServerToClient::Error {
+                reason: "Non registrato".into(),
+            });
+            return CommandResult::continue_with(client_id);
+        }
+    };
 
     // Metti il richiedente come primo elemento marcato " (tu)" e ordina alfabeticamente gli altri
     let mut others: Vec<String> = st

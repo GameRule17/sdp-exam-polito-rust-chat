@@ -2,18 +2,27 @@
 Gestisce la registrazione di un nuovo utente. Verifica la sintassi del nickname e l'unicità, aggiorna lo stato e invia la conferma.
 */
 
+use super::{ClientId, CommandResult};
+use crate::state::{State, Tx};
+use crate::validation::validate_nick_syntax;
+use ruggine_common::ServerToClient;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
-use ruggine_common::ServerToClient;
-use crate::validation::validate_nick_syntax;
-use crate::state::{State, Tx};
-use super::{ClientId, CommandResult};
 
-pub async fn handle(nick: String, req_id: Uuid, client_id: ClientId, tx: &Tx, state: &Arc<RwLock<State>>) -> CommandResult {
+pub async fn handle(
+    nick: String,
+    req_id: Uuid,
+    client_id: ClientId,
+    tx: &Tx,
+    state: &Arc<RwLock<State>>,
+) -> CommandResult {
     // Validazione sintassi lato server
     if let Err(reason) = validate_nick_syntax(&nick) {
-        let _ = tx.send(ServerToClient::Registered { ok: false, reason: Some(reason) });
+        let _ = tx.send(ServerToClient::Registered {
+            ok: false,
+            reason: Some(reason),
+        });
         return CommandResult::continue_with(client_id);
     }
 
@@ -41,7 +50,11 @@ pub async fn handle(nick: String, req_id: Uuid, client_id: ClientId, tx: &Tx, st
         (existing_id, existing_nick)
     } else {
         // nuovo nick
-        let id = st.users_by_nick.entry(nick.clone()).or_insert(req_id).to_owned();
+        let id = st
+            .users_by_nick
+            .entry(nick.clone())
+            .or_insert(req_id)
+            .to_owned();
         (id, nick.clone())
     };
 
@@ -50,7 +63,10 @@ pub async fn handle(nick: String, req_id: Uuid, client_id: ClientId, tx: &Tx, st
 
     println!("{} si è connesso al server", canonical_nick);
 
-    let _ = tx.send(ServerToClient::Registered { ok: true, reason: None });
+    let _ = tx.send(ServerToClient::Registered {
+        ok: true,
+        reason: None,
+    });
 
     CommandResult::continue_with(Some(id))
 }

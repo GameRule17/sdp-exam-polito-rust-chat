@@ -3,11 +3,11 @@ Modulo Handshake: gestisce la fase di registrazione e handshake tra client e ser
 Effettua il login e gestisce la negoziazione del nickname.
 */
 
+use ruggine_common::{ClientToServer, ServerToClient};
 use tokio::io::{BufReader, Lines};
 use tokio::net::tcp::OwnedReadHalf;
-use uuid::Uuid;
-use ruggine_common::{ClientToServer, ServerToClient};
 use tokio::net::tcp::OwnedWriteHalf;
+use uuid::Uuid;
 
 use crate::args::Args;
 use crate::net::send;
@@ -26,7 +26,7 @@ pub async fn register_handshake(
                 // Disabilita la raw mode prima di chiedere il nick
                 let _ = crossterm::terminal::disable_raw_mode();
                 prompt_nick()?
-            },
+            }
         };
 
         let client_id = Uuid::new_v4();

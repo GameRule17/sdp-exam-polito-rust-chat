@@ -3,9 +3,9 @@ Modulo Net: gestisce l'invio di messaggi dal client al server tramite la conness
 Serializza i dati e li trasmette in formato NDJSON.
 */
 
-use tokio::net::tcp::OwnedWriteHalf;
-use tokio::io::AsyncWriteExt;
 use ruggine_common::ClientToServer;
+use tokio::io::AsyncWriteExt;
+use tokio::net::tcp::OwnedWriteHalf;
 
 pub async fn send(writer: &mut OwnedWriteHalf, msg: &ClientToServer) -> anyhow::Result<()> {
     let data = serde_json::to_string(msg)? + "\n"; // NDJSON

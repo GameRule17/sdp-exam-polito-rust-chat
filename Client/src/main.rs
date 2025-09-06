@@ -6,21 +6,21 @@ Inizializza la connessione, effettua l'handshake e avvia l'interfaccia utente.
 mod args;
 mod commands;
 mod handshake;
-mod terminal;
 mod messages;
 mod net;
+mod terminal;
 mod ui;
 
+use args::Args;
+use clap::Parser; // per Args::parse
+use handshake::register_handshake;
 use std::sync::Arc;
-use tokio::net::TcpStream;
-use tokio::io::BufReader;
+use terminal::restore_terminal;
 use tokio::io::AsyncBufReadExt;
+use tokio::io::BufReader;
+use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use uuid::Uuid;
-use clap::Parser; // per Args::parse
-use args::Args;
-use handshake::register_handshake;
-use terminal::restore_terminal;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

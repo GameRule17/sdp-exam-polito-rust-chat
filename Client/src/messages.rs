@@ -10,14 +10,17 @@ pub fn render(msg: ServerToClient) -> String {
         ServerToClient::Registered { ok, reason } => {
             format!("[server] registrazione: ok={} {:?}", ok, reason)
         }
-        ServerToClient::InviteCode { group, code, client_id } => format!(
+        ServerToClient::InviteCode {
+            group,
+            code,
+            client_id,
+        } => format!(
             "[server] codice invito per il gruppo '{}': {} da {}",
             group, code, client_id
         ),
-        ServerToClient::InviteCodeForMe { group, code } => format!(
-            "[server] codice invito per il gruppo '{}': {}",
-            group, code
-        ),
+        ServerToClient::InviteCodeForMe { group, code } => {
+            format!("[server] codice invito per il gruppo '{}': {}", group, code)
+        }
         ServerToClient::Joined { group } => {
             format!("[server] sei entrato nel gruppo '{}'", group)
         }
