@@ -1,18 +1,15 @@
+<!-- cargo run sia su client che su server -->
+
 # MANUALE UTENTE
 
 ## Introduzione
 
 Questa guida spiega come installare, avviare e utilizzare la chat client-server sviluppata in Rust. Il sistema permette di comunicare in gruppi, inviare messaggi globali e gestire utenti tramite comandi da terminale.
 
----
+## Requisiti per compatibilità
 
-## Requisiti
-
-- Sistema operativo: Windows, Linux o MacOS (compatibilità certificata con Windows 11 e MacOS Sequoia 15.6)
-- Rust installato ([https://rustup.rs](https://rustup.rs))
-- Connessione di rete locale
-
----
+- Sistema operativo: Windows o MacOS (compatibilità certificata con Windows 11 e MacOS Sequoia 15.6)
+<!-- - Rust installato -->
 
 ## Installazione
 
@@ -32,31 +29,31 @@ Questa guida spiega come installare, avviare e utilizzare la chat client-server 
    cargo build --release
    ```
 
----
+per compilare in modalità debug, digitare solo
+
+```
+cargo build
+```
+
+sia lato server che client.
 
 ## Avvio del Server
-
-Una volta ottenuti il file eseguibili, puoi avviare il server e il client.
 
 1. Vai nella cartella `Server`:
    ```
    cd Server
    ```
 2. Avvia il server:
-   Attraverso riga di comando:
-
    ```
    cargo run --release
    ```
-
-   Oppure eseguendo direttamente il file binario:
-
-   - Su Windows: fai doppio click su `target\release\ruggine-server.exe`
-   - Su Linux/MacOS: esegui `./target/release/ruggine-server`
-
-   Il server si mette in ascolto sulla porta di default (es. 127.0.0.1:7000).
-
----
+   o in modalità debug
+   ```
+   cargo run
+   ```
+   Oppure esegui direttamente il file binario:
+   - Su Windows: doppio click su `target\release\ruggine-server.exe`
+   - Su Linux/MacOS: `./target/release/ruggine-server`
 
 ## Avvio del Client
 
@@ -65,61 +62,46 @@ Una volta ottenuti il file eseguibili, puoi avviare il server e il client.
    cd ../Client
    ```
 2. Avvia il client:
-
    ```
-   cargo run --release -- --server 127.0.0.1:7000 --nick TuoNick
+   cargo run --release
    ```
-
-   Oppure eseguendo direttamente il file binario:
-
-   - Su Windows: fai doppio click su `target\release\ruggine-client.exe`
-   - Su Linux/MacOS: esegui `./target/release/ruggine-client`
-
-   Se non specifichi il nickname, ti verrà richiesto all'avvio.
-
----
+   o in modalità debug
+   ```
+   cargo run
+   ```
+   Oppure esegui direttamente il file binario:
+   - Su Windows: doppio click su `target\release\ruggine-client.exe`
+   - Su Linux/MacOS: `./target/release/ruggine-client`
 
 ## Utilizzo del Client
 
-Dopo l'avvio, puoi interagire tramite i seguenti comandi:
+Dopo l'avvio, puoi interagire tramite i comandi elencati sotto. Puoi anche inviare messaggi globali semplicemente scrivendo il testo e premendo invio.
 
-- `/help` o `/` : Visualizza il menu dei comandi
-- `/create <nome>` : Crea un nuovo gruppo
-- `/invite <gruppo> <nick>` : Invita un utente in un gruppo
-- `/join <gruppo> <codice>` : Unisciti a un gruppo con codice invito
-- `/leave <gruppo>` : Esci da un gruppo
-- `/users` : Mostra tutti gli utenti connessi
-- `/groups` : Mostra i gruppi di appartenenza
-- `/msg <gruppo> <testo>` : Invia un messaggio a un gruppo
-- `/quit` : Esci dal client
+## Tabella comandi principali
 
-Puoi anche inviare messaggi globali semplicemente scrivendo il testo e premendo invio.
-
----
+| Comando                   | Descrizione                            |
+| ------------------------- | -------------------------------------- |
+| `/help` o `/`             | Visualizza il menu dei comandi         |
+| `/create <nome>`          | Crea un nuovo gruppo                   |
+| `/invite <gruppo> <nick>` | Invita un utente in un gruppo          |
+| `/join <gruppo> <codice>` | Unisciti a un gruppo con codice invito |
+| `/leave <gruppo>`         | Esci da un gruppo                      |
+| `/users`                  | Mostra tutti gli utenti connessi       |
+| `/groups`                 | Mostra i gruppi di appartenenza        |
+| `/msg <gruppo> <testo>`   | Invia un messaggio a un gruppo         |
+| `/quit`                   | Esci dal client                        |
 
 ## Esempio di sessione
 
-![Esempio di sessione1](/Documentation/imgs/esempio_chat_1.png)
-![Esempio di sessione2](/Documentation/imgs/esempio_chat_2.png)
+![Esempio di sessione1](/Documentation/imgs/esempio_chat.png)
+![Esempio di sessione1](/Documentation/imgs/esempio_chat_server.png)
 
----
+## Limitazioni
 
-## Risoluzione dei problemi
-
-- **Errore di connessione:** Verifica che il server sia avviato e l'indirizzo sia corretto.
-- **Nickname rifiutato:** Scegli un nickname valido (non "server" o "client", solo lettere e numeri, max 32 caratteri).
-- **Comando non riconosciuto:** Usa `/help` per vedere la sintassi corretta.
-- **Crash o chiusura improvvisa:** Consulta i log o riprova ad avviare il programma.
-
----
-
-## FAQ
-
-- **Posso usare più client contemporaneamente?** Sì, basta avviare più istanze del client.
-- **Come cambio nickname?** Riavvia il client con un nuovo nickname.
-- **Come creo un gruppo privato?** Usa `/create` e invita solo chi vuoi.
-
----
+- Max 32 caratteri per nickname e nomi gruppo
+- Nickname **non** può essere "server" o "client"
+- Solo caratteri alfanumerici ASCII
+- Nomi gruppo o nickname gestiti mediante trim (quindi spazi aggiuntivi all'inizio o fine verranno rimossi)
 
 ## Supporto
 
