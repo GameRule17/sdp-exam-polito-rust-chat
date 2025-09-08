@@ -119,6 +119,6 @@ G26/
 | Windows 11 (versione debug)           | 6,9 MB         | 7,7 MB         |
 | Windows 11 (versione release)         | 3,3 MB         | 3,5 MB         |
 | MacOS Sequoia 15.6 (versione debug)   | 13,7 MB        | 15,2 MB        |
-| MacOS Sequoia 15.6 (versione release) | (ANDRE)        | (ANDRE)        |
+| MacOS Sequoia 15.6 (versione release) | 4,2  MB        | 4,3 MB         |
 
 Le dimensioni possono variare leggermente in base alle opzioni di compilazione e alle dipendenze installate. Su MacOS i binari risultano più grandi a causa delle librerie statiche.
