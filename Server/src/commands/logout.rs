@@ -34,6 +34,19 @@ pub async fn handle(
             g.members.remove(&id);
         }
         st.groups.retain(|_, g| !g.members.is_empty());
+
+        // Rimuovi tutti gli inviti associati al nickname dell'utente
+        if let Some(nick) = &nick_opt {
+            let to_remove: Vec<String> = st.invites.iter()
+                .filter_map(|(code, (_group, invite_nick))| {
+                    if invite_nick.eq_ignore_ascii_case(nick) { Some(code.clone()) } else { None }
+                })
+                .collect();
+            for code in to_remove {
+                st.invites.remove(&code);
+            }
+        }
+
         st.nicks_by_id.remove(&id);
         st.clients.remove(&id);
     }

@@ -55,6 +55,17 @@ pub async fn handle(
             .entry(nick.clone())
             .or_insert(req_id)
             .to_owned();
+
+        // Rimuovi tutti gli inviti pendenti associati a questo nickname
+        let to_remove: Vec<String> = st.invites.iter()
+            .filter_map(|(code, (_group, invite_nick))| {
+                if invite_nick.eq_ignore_ascii_case(&nick) { Some(code.clone()) } else { None }
+            })
+            .collect();
+        for code in to_remove {
+            st.invites.remove(&code);
+        }
+
         (id, nick.clone())
     };
 
