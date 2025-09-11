@@ -24,13 +24,15 @@ use state::State;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Avvio del logger in background - task asincrono
+    //serve per loggare l'uso della CPU periodicamente (ogni due minuti)
     tokio::spawn(async {
         if let Err(e) = logger::start_cpu_logger("server_cpu.log").await {
             eprintln!("Errore logger CPU: {:?}", e);
         }
     });
 
-    // Impostiamo il filtro a 'warn' per evitare log informativi all'avvio
+    //configura il logging affinché vengano visualizzati solo 
+    //i messaggi informativi, di warning ed errore, con un formato leggibile in console.
     tracing_subscriber::fmt().with_env_filter("info").init();
 
     let args = Args::parse();
