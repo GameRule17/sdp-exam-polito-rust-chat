@@ -3,43 +3,30 @@ Modulo Validation: implementa le regole di validazione per nickname e nomi dei g
 Garantisce che gli identificatori rispettino le regole di sintassi e unicità.
 */
 
-/*
-    Regole comuni di validazione lato server per nickname e nomi dei gruppi
-    - non vuoto, max 32 caratteri
-    - solo ASCII
-    - niente whitespace
-    - deve iniziare con lettera ASCII [A-Za-z]
-    - solo alfanumerico ASCII [A-Za-z0-9]
-*/
-
-// Tipo di identificatore che stiamo validando
+// Tipo di identificatore che stiamo validando, se nickname oppure nome del gruppo
 pub enum NameKind {
     Nick,
     Group,
 }
 
 impl NameKind {
+    //restituisce una stringa descrittiva in minuscolo ("nickname" o "nome del gruppo"), 
+    //usata nei messaggi di errore.
     fn label(&self) -> &'static str {
         match self {
             Self::Nick => "nickname",
             Self::Group => "nome del gruppo",
         }
     }
-    fn capital_label(&self) -> &'static str {
-        match self {
-            Self::Nick => "Nickname",
-            Self::Group => "Nome del gruppo",
-        }
-    }
 }
 
-/// Valida un identificatore generico usato come nickname o nome gruppo.
+// Valida un identificatore generico usato come nickname o nome gruppo.
 pub fn validate_identifier(kind: NameKind, s: &str) -> Result<(), String> {
     if s.is_empty() {
         return Err(format!("Il {} non può essere vuoto.", kind.label()));
     }
     if s.len() > 32 {
-        return Err(format!("{} troppo lungo (max 32).", kind.capital_label()));
+        return Err(format!("{} troppo lungo (max 32).", kind.label()));
     }
     if !s.is_ascii() {
         return Err("Sono consentiti solo caratteri ASCII.".into());
@@ -74,10 +61,12 @@ pub fn validate_identifier(kind: NameKind, s: &str) -> Result<(), String> {
     Ok(())
 }
 
+//validazione specifica per nickname
 pub fn validate_nick_syntax(s: &str) -> Result<(), String> {
     validate_identifier(NameKind::Nick, s)
 }
 
+//validazione specifica per nomi dei gruppi
 pub fn validate_group_name_syntax(s: &str) -> Result<(), String> {
     validate_identifier(NameKind::Group, s)
 }
