@@ -11,39 +11,32 @@ use tokio::sync::Mutex;
 use crate::net::send;
 use crate::terminal::restore_terminal;
 
-// Client: nessuna validazione rigida; il server applica le regole definitive
-// Funzione che gestisce i comandi e messaggi (estratta per riuso nel REPL raw-mode)
+// Funzione che gestisce i comandi e messaggi
 pub async fn handle_command(
     line: &str,
-    writer_half: &Arc<Mutex<OwnedWriteHalf>>,
+    writer_half: &Arc<Mutex<OwnedWriteHalf>>, // metà di scrittura di una connessione TCP asincrona gestita da Tokio
     my_nick: &str,
 ) -> anyhow::Result<Vec<String>> {
-    let mut out = Vec::new();
+    let mut out = Vec::new(); // vettore di output strings che verrà restituito a fine funzione
     if line == "/help" || line == "/" {
         out.push(String::new());
-        out.push(
-            "============================= MENU COMANDI ================================".into(),
-        );
+        out.push("============================= MENU COMANDI ================================".into());
         out.push("/help (o /)                  visualizza questo menu dettagliato".into());
         out.push("/create <name>               crea un nuovo gruppo con nome <name>".into());
         out.push("/invite <group> <nick>       invita l'utente <nick> nel gruppo <group>".into());
-        out.push(
-            "/join <group> <code>         unisciti al gruppo <group> con il codice <code>".into(),
-        );
+        out.push("/join <group> <code>         unisciti al gruppo <group> con il codice <code>".into());
         out.push("/leave <group>               esci dal gruppo <group>".into());
         out.push("/users                       mostra tutti gli utenti connessi".into());
         out.push("/groups                      mostra i gruppi di appartenenza".into());
         out.push("/msg <group> <text>          invia il messaggio <text> al gruppo <group>".into());
         out.push("/quit                        esci dal client".into());
-        out.push(
-            "==========================================================================".into(),
-        );
+        out.push("==========================================================================".into());
         out.push(String::new());
     } else if line == "/quit" {
-        // comportati come CTRL+C: invia logout, ripristina il terminale e esci al shell
+        // acquisire in modo asincrono il lock sul writer della connessione TCP
         let mut wh = writer_half.lock().await;
+        // invio al server, tramite connessione TCP, il messaggio di Logout preso dalla common_lib
         let _ = send(&mut *wh, &ClientToServer::Logout { reason: None }).await;
-        // OwnedWriteHalf non espone shutdown su Windows direttamente; chiudiamo drop del lock
 
         // ripristina stato terminale prima di uscire
         restore_terminal();
@@ -53,12 +46,9 @@ pub async fn handle_command(
     } else if let Some(rest) = line.strip_prefix("/create ") {
         let mut wh = writer_half.lock().await;
         let _ = send(
-            &mut *wh,
-            &ClientToServer::CreateGroup {
-                group: rest.to_string(),
-            },
-        )
-        .await;
+            &mut *wh, &ClientToServer::CreateGroup { 
+                group: rest.to_string()
+            }).await;
     } else if let Some(rest) = line.strip_prefix("/invite ") {
         let mut it = rest.splitn(2, ' ');
         if let (Some(group), Some(nick)) = (it.next(), it.next()) {
@@ -69,8 +59,7 @@ pub async fn handle_command(
                     group: group.into(),
                     nick: nick.into(),
                 },
-            )
-            .await;
+            ).await;
         } else {
             out.push("[error] uso: /invite <group> <nick>".into());
         }
@@ -84,8 +73,7 @@ pub async fn handle_command(
                     group: group.into(),
                     invite_code: code.into(),
                 },
-            )
-            .await;
+            ).await;
         } else {
             out.push("[error] uso: /join <group> <code>".into());
         }
@@ -100,8 +88,7 @@ pub async fn handle_command(
                 &ClientToServer::LeaveGroup {
                     group: group.into(),
                 },
-            )
-            .await;
+            ).await;
         }
     } else if line == "/users" {
         let mut wh = writer_half.lock().await;
@@ -120,8 +107,7 @@ pub async fn handle_command(
                     text: text.into(),
                     nick: my_nick.to_string(),
                 },
-            )
-            .await;
+            ).await;
         } else {
             out.push("[error] uso: /msg <group> <text>".into());
         }
@@ -134,8 +120,7 @@ pub async fn handle_command(
             &ClientToServer::GlobalMessage {
                 text: line.to_string(),
             },
-        )
-        .await;
+        ).await;
     }
     Ok(out)
 }

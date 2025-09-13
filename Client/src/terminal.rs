@@ -12,9 +12,14 @@ pub fn restore_terminal() {
         crossterm::event::DisableMouseCapture,
         crossterm::cursor::Show,
         crossterm::terminal::LeaveAlternateScreen
+        // uscita dalla "alternate screen" tornando alla schermata principale del terminale
+        // Tutto ciò che era stato scritto nella alternate screen viene perso, tornando
+        // al buffer principale.
     );
-    let _ = write!(stdout, "\x1b[?7h"); // riabilita wrapping delle righe
-    let _ = stdout.flush();
+    // sequenza di escape ANSI che riattiva il "line wrapping", facendo
+    // andare automaticamente a capo il testo che supera la larghezza del terminale
+    let _ = write!(stdout, "\x1b[?7h");
+    let _ = stdout.flush(); // applicazione dei comandi al terminale
 }
 
 pub fn prompt_nick() -> anyhow::Result<String> {
